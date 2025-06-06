@@ -1,0 +1,206 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f5f5f5;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+    text-align: center;
+    color: #333;
+}
+
+.controls {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.week-selector {
+    display: flex;
+    align-items: center;
+}
+
+.week-selector label {
+    margin-right: 10px;
+}
+
+.export-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.export-buttons button {
+    background-color: #4285f4;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.export-buttons button:hover {
+    background-color: #3367d6;
+}
+
+.limits-row, .table-header, .employee-row, .used-hours-row {
+    display: flex;
+    border-bottom: 1px solid #ddd;
+    padding: 10px 0;
+}
+
+.label-cell {
+    width: 150px;
+    padding: 5px;
+    font-weight: bold;
+}
+
+.day-cell {
+    width: 100px;
+    padding: 5px;
+    text-align: center;
+    border-left: 1px solid #eee;
+    position: relative;
+}
+
+.total-cell {
+    width: 100px;
+    padding: 5px;
+    text-align: center;
+    font-weight: bold;
+    border-left: 1px solid #ddd;
+}
+
+.employee-row .label-cell {
+    display: flex;
+    align-items: center;
+}
+
+.employee-name {
+    flex-grow: 1;
+}
+
+.delete-employee {
+    background-color: #ff4444;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 2px 6px;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+.time-input {
+    width: 80px;
+    padding: 4px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.day-limit-input {
+    width: 50px;
+    text-align: center;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 2px;
+}
+
+.add-employee {
+    margin: 15px 0;
+    text-align: center;
+}
+
+#add-employee-btn {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+#add-employee-btn:hover {
+    background-color: #45a049;
+}
+
+.table-header {
+    font-weight: bold;
+    background-color: #f0f0f0;
+}
+
+.limits-row, .used-hours-row {
+    background-color: #f9f9f9;
+}
+
+.used-hours-row .label-cell {
+    font-weight: normal;
+    font-style: italic;
+}
+
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: #ff4444;
+    color: white;
+    padding: 15px 20px;
+    border-radius: 4px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    display: none;
+    font-size: 14px;
+}
+
+.limit-exceeded {
+    background-color: #ffdddd;
+}
+
+.limit-exceeded::after {
+    content: '!';
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background-color: red;
+    color: white;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: bold;
+}
+.action-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.action-buttons button {
+    background-color: #ff9800;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.action-buttons button:hover {
+    background-color: #e68a00;
+}
+
+.day-off {
+    color: #888;
+    font-style: italic;
+}
