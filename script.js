@@ -46,9 +46,7 @@ function setupEventListeners() {
 }
 
 function addExampleEmployees() {
-    addEmployee('Рома', ['8 - 21', '8 - 21', '8 - 21', '8 - 21', '8 - 21', '9 - 19', '']);
-    addEmployee('Мар\'ян', ['8 - 21', '8 - 21', '8 - 21', '8 - 21', '8 - 21', '9 - 19', '']);
-    addEmployee('Лілія', ['', '', '', '', '', '', '']);
+    
 }
 
 // Функції для роботи з тижнями
