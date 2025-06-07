@@ -10,8 +10,8 @@ function initApp() {
     // Додаємо обробники подій
     setupEventListeners();
     
-    // Додаємо приклад працівників
-    addExampleEmployees();
+    // Завантажуємо збережені дані
+    loadSavedData();
     
     // Оновлюємо дати тижня
     updateWeekDates();
@@ -20,13 +20,85 @@ function initApp() {
     calculateAllHours();
 }
 
+// Збереження даних
+function saveData() {
+    const data = {
+        employees: getEmployeesData(),
+        week: document.getElementById('week').value,
+        limits: getLimitsData()
+    };
+    localStorage.setItem('workScheduleData', JSON.stringify(data));
+}
+
+function loadSavedData() {
+    const savedData = localStorage.getItem('workScheduleData');
+    if (savedData) {
+        const data = JSON.parse(savedData);
+        
+        // Відновлюємо вибраний тиждень
+        document.getElementById('week').value = data.week;
+        
+        // Відновлюємо ліміти
+        if (data.limits) {
+            setLimitsData(data.limits);
+        }
+        
+        // Відновлюємо працівників
+        if (data.employees && data.employees.length > 0) {
+            clearAllEmployees();
+            data.employees.forEach(emp => {
+                addEmployee(emp.name, emp.schedule, false);
+            });
+        }
+    } else {
+        // Якщо немає збережених даних - додаємо приклад працівників
+        addExampleEmployees();
+    }
+}
+
+function getEmployeesData() {
+    const employees = [];
+    document.querySelectorAll('.employee-row').forEach(row => {
+        const name = row.querySelector('.employee-name').textContent;
+        const schedule = [];
+        row.querySelectorAll('.time-input').forEach(input => {
+            schedule.push(input.value);
+        });
+        employees.push({ name, schedule });
+    });
+    return employees;
+}
+
+function getLimitsData() {
+    const limits = [];
+    document.querySelectorAll('.day-limit-input').forEach(input => {
+        limits.push(input.value);
+    });
+    return limits;
+}
+
+function setLimitsData(limits) {
+    document.querySelectorAll('.day-limit-input').forEach((input, index) => {
+        input.value = limits[index] || input.value;
+    });
+}
+
+function clearAllEmployees() {
+    document.getElementById('employees-container').innerHTML = '';
+}
+
 function setCurrentWeek() {
     const weekInput = document.getElementById('week');
-    const today = new Date();
-    const year = today.getFullYear();
-    const weekNum = getWeekNumber(today)[1];
-    const weekString = `${year}-W${weekNum.toString().padStart(2, '0')}`;
-    weekInput.value = weekString;
+    const savedWeek = localStorage.getItem('workScheduleWeek');
+    if (savedWeek) {
+        weekInput.value = savedWeek;
+    } else {
+        const today = new Date();
+        const year = today.getFullYear();
+        const weekNum = getWeekNumber(today)[1];
+        const weekString = `${year}-W${weekNum.toString().padStart(2, '0')}`;
+        weekInput.value = weekString;
+    }
 }
 
 function setupEventListeners() {
@@ -37,16 +109,23 @@ function setupEventListeners() {
     document.getElementById('export-jpg').addEventListener('click', exportToJPG);
     
     // Вибір тижня
-    document.getElementById('week').addEventListener('change', updateWeekDates);
+    document.getElementById('week').addEventListener('change', function() {
+        updateWeekDates();
+        saveData();
+    });
     
     // Ліміти годин
     document.querySelectorAll('.day-limit-input').forEach(input => {
-        input.addEventListener('change', calculateUsedHours);
+        input.addEventListener('change', function() {
+            calculateUsedHours();
+            saveData();
+        });
     });
 }
 
 function addExampleEmployees() {
     
+    saveData();
 }
 
 // Функції для роботи з тижнями
@@ -83,11 +162,11 @@ function updateWeekDates() {
 function addNewEmployee() {
     const name = prompt('Введіть ім\'я працівника:');
     if (name) {
-        addEmployee(name, Array(7).fill(''));
+        addEmployee(name, Array(7).fill(''), true);
     }
 }
 
-function addEmployee(name, schedule) {
+function addEmployee(name, schedule, shouldSave = true) {
     const container = document.getElementById('employees-container');
     const employeeRow = document.createElement('div');
     employeeRow.className = 'employee-row';
@@ -108,6 +187,10 @@ function addEmployee(name, schedule) {
     
     container.appendChild(employeeRow);
     calculateAllHours();
+    
+    if (shouldSave) {
+        saveData();
+    }
 }
 
 function createNameCell(name) {
@@ -124,6 +207,7 @@ function createNameCell(name) {
     deleteBtn.addEventListener('click', function() {
         this.closest('.employee-row').remove();
         calculateAllHours();
+        saveData();
     });
     
     labelCell.appendChild(nameSpan);
@@ -162,6 +246,7 @@ function createDayCell(scheduleValue) {
     timeInput.addEventListener('change', function() {
         if (validateTimeInput(this)) {
             calculateAllHours();
+            saveData();
         }
         if (this.value === '') {
             this.placeholder = 'вихідний';
@@ -186,6 +271,7 @@ function clearSchedule() {
             input.placeholder = 'вихідний';
             input.dispatchEvent(new Event('change'));
         });
+        saveData();
     }
 }
 
