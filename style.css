@@ -5,13 +5,23 @@ body {
     background-color: #f5f5f5;
 }
 
-.container {
+
+.container,
+.stats-container {
     max-width: 1200px;
     margin: 0 auto;
     background-color: white;
     padding: 20px;
     border-radius: 8px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.container {
+    margin-bottom: 24px;
+}
+
+.stats-container {
+    margin-bottom: 24px;
 }
 
 h1 {
@@ -57,12 +67,18 @@ h1 {
     display: flex;
     border-bottom: 1px solid #ddd;
     padding: 10px 0;
+    align-items: center;
+}
+
+.employee-row {
+    align-items: center;
 }
 
 .label-cell {
     width: 150px;
     padding: 5px;
     font-weight: bold;
+    padding-right: 28px;
 }
 
 .day-cell {
@@ -83,11 +99,66 @@ h1 {
 
 .employee-row .label-cell {
     display: flex;
+    flex-direction: row;
     align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    position: relative;
+    padding-top: 0;
+}
+
+.employee-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .employee-name {
-    flex-grow: 1;
+    font-weight: 600;
+}
+
+.employee-position {
+    font-size: 12px;
+    color: #666;
+}
+
+.employee-actions {
+    display: flex;
+    gap: 8px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.employee-row .label-cell:hover .employee-actions,
+.employee-row .label-cell:focus-within .employee-actions {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.employee-actions button {
+    padding: 2px 8px;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.edit-employee {
+    background-color: #607d8b;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    width: 28px;
+    height: 24px;
+    padding: 0;
+}
+
+.edit-employee:hover {
+    background-color: #4a6572;
 }
 
 .delete-employee {
@@ -95,9 +166,14 @@ h1 {
     color: white;
     border: none;
     border-radius: 4px;
-    padding: 2px 6px;
+    padding: 2px 8px;
     cursor: pointer;
-    margin-left: 10px;
+    flex-shrink: 0;
+}
+
+.employee-actions .delete-employee:hover {
+    background-color: #e53935;
+    color: #fff;
 }
 
 .time-input {
@@ -106,6 +182,131 @@ h1 {
     border: 1px solid #ddd;
     border-radius: 4px;
     text-align: center;
+}
+
+.employee-row .day-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    justify-content: center;
+}
+
+.employee-row .day-cell .shift-input {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    position: relative;
+}
+
+.employee-row .day-cell .shift-input.secondary-shift {
+    background-color: transparent;
+    border-radius: 4px;
+    padding: 0;
+    width: 100%;
+}
+
+.secondary-shift-container {
+    width: 100%;
+    transition: all 0.2s ease;
+}
+
+.secondary-shift-container.is-collapsed {
+    height: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.secondary-shift-container.is-collapsed .shift-input {
+    display: none;
+}
+
+.secondary-shift-container.is-preview {
+    height: 8px;
+    opacity: 0.7;
+    pointer-events: auto;
+    border: 1px dashed #bbb;
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+}
+
+.secondary-shift-container:not(.is-collapsed) {
+    padding: 0;
+}
+
+.secondary-shift-container:not(.is-collapsed) .shift-input.secondary-shift .time-input {
+    width: 80px;
+    padding: 4px;
+}
+
+.employee-row .day-cell.is-locked {
+    cursor: not-allowed;
+}
+
+.employee-row .day-cell.is-locked .shift-input,
+.employee-row .day-cell.is-locked .secondary-shift-container {
+    visibility: hidden;
+}
+
+.employee-row .day-cell.is-locked .time-input {
+    cursor: not-allowed;
+}
+
+.day-off-label {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-decoration: underline;
+    font-weight: 600;
+    color: #333;
+    pointer-events: none;
+}
+
+.employee-row .day-cell.is-locked .day-off-label {
+    display: block;
+}
+
+.delete-shift-btn {
+    background: transparent;
+    border: none;
+    color: #ff4444;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 100%;
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.employee-row .day-cell .shift-input .time-input {
+    flex: none;
+}
+
+.delete-shift-btn:hover {
+    color: #c62828;
+}
+
+.secondary-shift-container:not(.is-collapsed):hover .delete-shift-btn,
+.secondary-shift-container.is-preview:hover .delete-shift-btn,
+.shift-input.secondary-shift:focus-within .delete-shift-btn {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .day-limit-input {
@@ -137,6 +338,24 @@ h1 {
 .table-header {
     font-weight: bold;
     background-color: #f0f0f0;
+}
+
+.table-header .day-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.table-header .day-name {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.table-header .day-date {
+    font-size: 13px;
+    color: #555;
 }
 
 .limits-row, .used-hours-row {
@@ -182,6 +401,14 @@ h1 {
     font-size: 10px;
     font-weight: bold;
 }
+
+.made-by {
+    margin: 30px 0 10px;
+    text-align: center;
+    font-size: 12px;
+    color: #888;
+    letter-spacing: 0.5px;
+}
 .action-buttons {
     display: flex;
     gap: 10px;
@@ -204,3 +431,176 @@ h1 {
     color: #888;
     font-style: italic;
 }
+.stats-container h2 {
+    margin-top: 0;
+    margin-bottom: 16px;
+    font-size: 20px;
+    color: #333;
+}
+
+.stats-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.stats-tab {
+    border: 1px solid #d4dae6;
+    background-color: #f5f7fb;
+    color: #526174;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.stats-tab.active {
+    background: linear-gradient(90deg, #4CAF50, #81C784);
+    color: #fff;
+    border-color: transparent;
+}
+
+.stats-tab:hover {
+    background-color: #e6ebf4;
+}
+
+.stats-panels {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.stats-panel {
+    display: none;
+}
+
+.stats-panel.active {
+    display: block;
+}
+
+.stats-placeholder {
+    padding: 24px;
+    border: 1px dashed #c7ceda;
+    border-radius: 6px;
+    text-align: center;
+    color: #7f889a;
+    background-color: #fafbff;
+}
+
+.stats-overview {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.summary-item {
+    flex: 1 1 200px;
+    background-color: #f7f9fc;
+    border: 1px solid #e1e6ef;
+    border-radius: 6px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.summary-label {
+    font-size: 13px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-value {
+    font-size: 22px;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: #e6ebf4;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50, #81C784);
+    width: 0;
+    transition: width 0.3s ease;
+}
+
+.employee-stats-card {
+    border: 1px solid #e1e6ef;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.employee-stats-header,
+.employee-stats-row {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    padding: 10px 14px;
+    align-items: center;
+}
+
+.employee-stats-header {
+    background-color: #f5f7fb;
+    font-weight: 600;
+    font-size: 13px;
+    color: #526174;
+}
+
+.employee-stats-body {
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.employee-stats-row {
+    border-top: 1px solid #eef2f8;
+    font-size: 14px;
+    color: #2f3b4c;
+}
+
+.employee-stats-row:first-child {
+    border-top: none;
+}
+
+.employee-stats-row .employee-name-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.employee-stats-header span:nth-child(n+3),
+.employee-stats-row span:nth-child(n+3) {
+    text-align: right;
+}
+
+.employee-stats-row .employee-name-cell .position {
+    font-size: 12px;
+    color: #778395;
+}
+
+.employee-stats-empty {
+    padding: 18px;
+    text-align: center;
+    color: #7a8596;
+    font-size: 13px;
+}
+
+.stats-container .used-hours-row {
+    margin-top: 24px;
+}
+
+.stats-container .used-hours-row .label-cell {
+    font-weight: 600;
+    font-style: normal;
+}
+
