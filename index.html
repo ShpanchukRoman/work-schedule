@@ -35,7 +35,7 @@
             <div class="day-cell" data-day="4"><input type="number" class="day-limit-input" value="26"></div>
             <div class="day-cell" data-day="5"><input type="number" class="day-limit-input" value="20"></div>
             <div class="day-cell" data-day="6"><input type="number" class="day-limit-input" value="20"></div>
-            <div class="total-cell">170</div>
+            <div class="total-cell" id="week-limit-total">0</div>
         </div>
         
         <div class="table-header">
@@ -57,7 +57,7 @@
         <div class="add-employee">
             <button id="add-employee-btn">Додати працівника</button>
         </div>
-        
+
         <div class="used-hours-row">
             <div class="label-cell">Використані години в день:</div>
             <div class="day-cell" data-day="0">0</div>
@@ -70,6 +70,65 @@
             <div class="total-cell">0</div>
         </div>
     </div>
+
+    <div class="stats-container">
+        <h2>Статистика</h2>
+
+        <div class="stats-tabs">
+            <button class="stats-tab active" data-stats="week">За тиждень</button>
+            <button class="stats-tab" data-stats="month">За місяць</button>
+            <button class="stats-tab" data-stats="all">За весь час</button>
+            <button class="stats-tab" data-stats="employee">Детальна по працівнику</button>
+        </div>
+
+        <div class="stats-panels">
+            <div class="stats-panel active" data-stats="week">
+                <div class="stats-overview">
+                    <div class="summary-item">
+                        <span class="summary-label">Загальні години</span>
+                        <span class="summary-value" id="total-week-hours">0</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Середні години на працівника</span>
+                        <span class="summary-value" id="average-week-hours">0</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Використання тижневого ліміту</span>
+                        <span class="summary-value" id="limit-usage-percent">0%</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="limit-usage-bar"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="employee-stats-card">
+                    <div class="employee-stats-header">
+                        <span class="col-name">Працівник</span>
+                        <span class="col-position">Посада</span>
+                        <span class="col-days">Роб./Вих.</span>
+                        <span class="col-hours">Години</span>
+                        <span class="col-average">Середнє</span>
+                    </div>
+                    <div id="employee-stats-body" class="employee-stats-body">
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-panel" data-stats="month">
+                <div class="stats-placeholder">Статистика за місяць буде доступна найближчим часом.</div>
+            </div>
+
+            <div class="stats-panel" data-stats="all">
+                <div class="stats-placeholder">Статистика за весь час ще не зібрана.</div>
+            </div>
+
+            <div class="stats-panel" data-stats="employee">
+                <div class="stats-placeholder">Обери працівника, щоб побачити детальну статистику (у розробці).</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="made-by">зроблено у wave.ri - shpanchuk roman</div>
 
     <div id="notification" class="notification"></div>
 
