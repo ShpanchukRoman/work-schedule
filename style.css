@@ -40,44 +40,63 @@ h1 {
     color: #333;
 }
 
+/* --- layout controls restored --- */
 .controls {
     margin-bottom: 20px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    align-items: stretch;
+    gap: 12px;
 }
 
 .controls-row {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
     gap: 16px;
+    flex-wrap: wrap;
 }
 
 .controls-actions {
     display: flex;
     gap: 12px;
     align-items: center;
+    margin-left: auto;
 }
 
-.controls-actions .primary-btn {
-    background: linear-gradient(120deg, #42a5f5, #1e88e5);
-    color: #fff;
-    box-shadow: 0 6px 16px rgba(33, 150, 243, 0.2);
-}
-
-.controls-actions .primary-btn:hover {
-    filter: brightness(0.95);
+.share-inline-panel {
+    align-self: stretch;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .week-selector {
     display: flex;
     align-items: center;
+    gap: 8px;
 }
 
 .week-selector label {
-    margin-right: 10px;
+    font-weight: 600;
+    color: #37474f;
+}
+
+.week-selector input[type="week"] {
+    padding: 4px 10px;
+    height: 27px;
+    border-radius: 6px;
+    border: 1px solid #cfd8dc;
+    background-color: #fff;
+    font-size: 12px;
+    color: #1f2937;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    min-width: 150px;
+}
+
+.week-selector input[type="week"]:focus {
+    outline: none;
+    border-color: #1e88e5;
+    box-shadow: 0 0 0 3px rgba(30, 136, 229, 0.18);
 }
 
 .limits-row, .table-header, .employee-row, .used-hours-row {
@@ -89,11 +108,6 @@ h1 {
 
 .employee-row {
     align-items: center;
-}
-
-.employee-row.employee-self .label-cell {
-    border-left: 4px solid #43a047;
-    padding-left: 12px;
 }
 
 .label-cell {
@@ -117,6 +131,36 @@ h1 {
     text-align: center;
     font-weight: bold;
     border-left: 1px solid #ddd;
+}
+
+
+.employee-row .label-cell {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.employee-row.employee-self .label-cell {
+    border-left: 4px solid #43a047;
+    padding-left: 12px;
+}
+
+.day-cell,
+.total-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    position: relative;
+}
+
+.total-cell {
+    font-weight: 600;
+    color: #1f2a44;
 }
 
 .employee-row .label-cell {
@@ -372,21 +416,6 @@ h1 {
 .table-header .day-date {
     font-size: 13px;
     color: #555;
-}
-
-.limits-row, .used-hours-row {
-    background-color: #f9f9f9;
-}
-
-.used-hours-row .label-cell {
-    font-weight: normal;
-    font-style: italic;
-}
-
-.used-hours-row .day-cell.over-limit {
-    background: rgba(244, 67, 54, 0.12);
-    color: #b71c1c;
-    font-weight: 600;
 }
 
 .limit-alerts {
@@ -1338,6 +1367,30 @@ body.shared-view #share-form select[disabled] {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
+}
+
+@media (max-width: 1100px) {
+    .controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+    .controls-row {
+        width: 100%;
+        justify-content: space-between;
+    }
+}
+
+@media (max-width: 768px) {
+    .controls-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    .controls-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
 }
 
 @media (max-width: 520px) {
