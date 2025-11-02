@@ -8,21 +8,45 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 </head>
-<body>
-    <div class="container">
+<body data-page="schedule">
+    <header class="app-header">
+        <div class="brand">timzo</div>
+    </header>
+
+    <main>
+    <div id="share-banner" class="share-info-banner hidden"></div>
+    <section class="container">
         <h1>Планування графіку працівників</h1>
         
         <div class="controls">
-            <div class="week-selector">
-                <label for="week">Обрати тиждень:</label>
-                <input type="week" id="week" name="week">
+            <div class="controls-row">
+                <div class="week-selector">
+                    <label for="week">Обрати тиждень:</label>
+                    <input type="week" id="week" name="week">
+                </div>
+                <div class="controls-actions">
+                    <button id="share-trigger" class="primary-btn" aria-expanded="false" aria-controls="share-inline-panel">Поділитися</button>
+                    <button id="clear-schedule" class="ghost-btn danger">Очистити</button>
+                </div>
             </div>
-            <div class="export-buttons">
-                <button id="export-pdf">Експорт в PDF</button>
-                <button id="export-jpg">Експорт в JPG</button>
-            </div>
-            <div class="action-buttons">
-                <button id="clear-schedule">Очистити</button>
+            <div id="share-inline-panel" class="share-inline-panel hidden">
+                <form id="share-form" class="share-inline-form">
+                    <div class="share-fields">
+                        <label class="shaнарre-field">
+                            <span>Тиждень</span>
+                            <input type="week" id="share-week" required>
+                        </label>
+                    </div>
+                    <div class="share-actions">
+                        <button type="submit" class="primary-btn">Згенерувати посилання</button>
+                        <div class="share-exports">
+                            <button id="export-pdf" type="button">Експорт в PDF</button>
+                            <button id="export-jpg" type="button">Експорт в JPG</button>
+                        </div>
+                    </div>
+                    <p class="hint">Створене посилання відкриває розклад лише для перегляду.</p>
+                </form>
+                <div id="share-result" class="share-result hidden"></div>
             </div>
         </div>
         
@@ -55,7 +79,7 @@
         </div>
         
         <div class="add-employee">
-            <button id="add-employee-btn">Додати працівника</button>
+            <button id="add-employee-btn" class="ghost-btn">Додати працівника</button>
         </div>
 
         <div class="used-hours-row">
@@ -69,9 +93,28 @@
             <div class="day-cell" data-day="6">0</div>
             <div class="total-cell">0</div>
         </div>
-    </div>
+        <div id="limit-alerts" class="limit-alerts" aria-live="polite" aria-hidden="true"></div>
+    </section>
 
-    <div class="stats-container">
+    <section class="timeline-container">
+        <div class="timeline-header">
+            <div class="timeline-title">
+                <h2>Таймлайн дня</h2>
+                <div class="timeline-day-label" id="timeline-day-label">Немає даних</div>
+            </div>
+            <div class="timeline-controls">
+                <label class="timeline-date-picker">
+                    <span>Дата:</span>
+                    <input type="date" id="timeline-date">
+                </label>
+                <button type="button" id="timeline-toggle" class="timeline-toggle">Сховати</button>
+            </div>
+        </div>
+        <div class="timeline-scale" id="timeline-scale"></div>
+        <div class="timeline-body" id="timeline-body"></div>
+    </section>
+
+    <section class="stats-container">
         <h2>Статистика</h2>
 
         <div class="stats-tabs">
@@ -126,11 +169,10 @@
                 <div class="stats-placeholder">Обери працівника, щоб побачити детальну статистику (у розробці).</div>
             </div>
         </div>
-    </div>
+    </section>
 
-    <div class="made-by">зроблено у wave.ri - shpanchuk roman</div>
-
-    <div id="notification" class="notification"></div>
+    <div class="made-by">зроблено у wave&middot;ri s&middot;hpanchuk roman</div>
+    </main>
 
     <script src="script.js"></script>
 </body>
