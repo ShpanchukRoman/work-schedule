@@ -14,8 +14,6 @@ let shareBannerTimer = null;
 let lastGeneratedShareUrl = '';
 let shareLinkExpanded = false;
 let lastShareEmployeeCount = 0;
-let lastShareQrDataUrl = '';
-let lastShareQrIsRemote = false;
 
 const DAY_NAMES = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота', 'Неділя'];
 const MONTH_NAMES = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
@@ -416,10 +414,6 @@ function renderShareResult() {
         '<div class="share-result-content">',
         `<div class="share-result-line"><span class="share-result-label">Посилання:</span><span class="share-result-link${shareLinkExpanded ? ' is-expanded' : ''}">${linkHtml}</span></div>`,
         `<div class="share-result-meta">${employeeCountText}</div>`,
-        '<div class="share-result-qr hidden">',
-        '<img alt="QR-код посилання" class="share-result-qr-image">',
-        '<span class="share-result-qr-hint">QR-код посилання на розклад</span>',
-        '</div>',
         '<div class="share-result-actions">',
         `<button type="button" class="ghost-btn share-toggle-link" data-action="toggle-link">${shareLinkExpanded ? 'Сховати посилання' : 'Показати повністю'}</button>`,
         '<button type="button" class="primary-btn share-copy-link" data-action="copy-link">Скопіювати посилання</button>',
@@ -432,7 +426,6 @@ function renderShareResult() {
     const toggleBtn = resultEl.querySelector('[data-action="toggle-link"]');
     const copyBtn = resultEl.querySelector('[data-action="copy-link"]');
     const downloadBtn = resultEl.querySelector('[data-action="download-qr"]');
-    const qrWrapper = resultEl.querySelector('.share-result-qr');
 
     if (toggleBtn) {
         toggleBtn.addEventListener('click', () => {
@@ -449,7 +442,6 @@ function renderShareResult() {
         downloadBtn.addEventListener('click', downloadShareQr);
     }
 
-    updateShareQrPreview(qrWrapper);
 }
 
 function getShortShareLink(url) {
@@ -461,49 +453,60 @@ function getShortShareLink(url) {
     return `${start}...${end}`;
 }
 
-function updateShareQrPreview(wrapper) {
-    if (!wrapper) return;
-    const img = wrapper.querySelector('.share-result-qr-image');
-    if (!img || !lastGeneratedShareUrl) {
-        lastShareQrDataUrl = '';
-        lastShareQrIsRemote = false;
-        wrapper.classList.add('hidden');
-        return;
-    }
-    if (typeof QRious !== 'undefined') {
-        try {
-            const qr = new QRious({ value: lastGeneratedShareUrl, size: 220, level: 'H' });
-            lastShareQrDataUrl = qr.toDataURL('image/png');
-            lastShareQrIsRemote = false;
-            img.src = lastShareQrDataUrl;
-            wrapper.classList.remove('hidden');
-            return;
-        } catch (error) {
-            console.warn('QRious generation failed, falling back to Google Charts', error);
-        }
-    }
-    const remoteUrl = `https://chart.googleapis.com/chart?cht=qr&chs=220x220&chl=${encodeURIComponent(lastGeneratedShareUrl)}&chld=H|1`;
-    lastShareQrDataUrl = remoteUrl;
-    lastShareQrIsRemote = true;
-    img.src = remoteUrl;
-    wrapper.classList.remove('hidden');
-}
-
-function downloadShareQr() {
-    if (!lastShareQrDataUrl) {
+async function downloadShareQr() {
+    if (!lastGeneratedShareUrl) {
         showBannerMessage('QR-код недоступний. Згенеруйте посилання ще раз.');
         return;
     }
-    if (lastShareQrIsRemote) {
-        window.open(lastShareQrDataUrl, '_blank', 'noopener');
+
+    const fileName = `timzo-schedule-qr-${Date.now()}.png`;
+
+    const downloadFromDataUrl = (dataUrl) => {
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const tryLocalGeneration = () => {
+        if (typeof QRious === 'undefined') {
+            return null;
+        }
+        try {
+            const qr = new QRious({
+                value: lastGeneratedShareUrl,
+                size: 320,
+                level: 'H'
+            });
+            return qr.toDataURL('image/png');
+        } catch (error) {
+            console.warn('QRious generation failed, fallback to remote service', error);
+            return null;
+        }
+    };
+
+    const localDataUrl = tryLocalGeneration();
+    if (localDataUrl) {
+        downloadFromDataUrl(localDataUrl);
         return;
     }
-    const link = document.createElement('a');
-    link.href = lastShareQrDataUrl;
-    link.download = `timzo-schedule-qr-${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+
+    const remoteUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(lastGeneratedShareUrl)}&ecc=H`;
+    try {
+        const response = await fetch(remoteUrl);
+        if (!response.ok) {
+            throw new Error(`QR server responded with ${response.status}`);
+        }
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        downloadFromDataUrl(objectUrl);
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+    } catch (error) {
+        console.error('Remote QR generation failed', error);
+        showBannerMessage('Не вдалося завантажити QR-код. Спробуйте пізніше.');
+    }
 }
 
 async function copyShareLink() {
