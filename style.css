@@ -1,17 +1,38 @@
+:root {
+    --layout-max-width: 1200px;
+    --schedule-label-width: 150px;
+    --schedule-label-min: 130px;
+    --schedule-day-width: 100px;
+    --schedule-day-min: 84px;
+    --schedule-total-width: 110px;
+    --schedule-total-min: 95px;
+    --schedule-table-min-width: 940px;
+    --timeline-min-width: 640px;
+    --schedule-label-max: 240px;
+    --schedule-day-max: 180px;
+    --schedule-total-max: 160px;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
 body {
     font-family: Arial, sans-serif;
     margin: 0;
-    padding: 20px;
+    padding: clamp(12px, 4vw, 20px);
     background-color: #f5f5f5;
 }
 
-
 .container,
 .stats-container {
-    max-width: 1200px;
+    max-width: var(--layout-max-width);
+    width: 100%;
     margin: 0 auto;
     background-color: white;
-    padding: 20px;
+    padding: clamp(16px, 3vw, 20px);
     border-radius: 8px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
@@ -23,12 +44,14 @@ body {
 .timeline-container {
     --timeline-info-width: 200px;
     --timeline-gap: 16px;
-    max-width: 1200px;
+    max-width: var(--layout-max-width);
+    width: 100%;
     margin: 0 auto 24px auto;
     background-color: white;
-    padding: 20px;
+    padding: clamp(16px, 3vw, 20px);
     border-radius: 8px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    overflow-x: auto;
 }
 
 .stats-container {
@@ -104,6 +127,8 @@ h1 {
     border-bottom: 1px solid #ddd;
     padding: 10px 0;
     align-items: center;
+    width: 100%;
+    min-width: min(100%, var(--schedule-table-min-width));
 }
 
 .employee-row {
@@ -111,14 +136,22 @@ h1 {
 }
 
 .label-cell {
-    width: 150px;
+    flex: 0 1 clamp(var(--schedule-label-min), var(--schedule-label-width), var(--schedule-label-max));
+    min-width: var(--schedule-label-min);
+    max-width: var(--schedule-label-max);
     padding: 5px;
     font-weight: bold;
     padding-right: 28px;
 }
 
 .day-cell {
-    width: 100px;
+    flex: 1 1 clamp(
+        var(--schedule-day-min),
+        calc((100% - var(--schedule-label-width) - var(--schedule-total-width)) / 7),
+        var(--schedule-day-max)
+    );
+    min-width: var(--schedule-day-min);
+    max-width: var(--schedule-day-max);
     padding: 5px;
     text-align: center;
     border-left: 1px solid #eee;
@@ -126,7 +159,9 @@ h1 {
 }
 
 .total-cell {
-    width: 100px;
+    flex: 0 1 clamp(var(--schedule-total-min), var(--schedule-total-width), var(--schedule-total-max));
+    min-width: var(--schedule-total-min);
+    max-width: var(--schedule-total-max);
     padding: 5px;
     text-align: center;
     font-weight: bold;
@@ -246,7 +281,7 @@ h1 {
 }
 
 .time-input {
-    width: 80px;
+    width: clamp(52px, calc(var(--schedule-day-width) - 8px), 80px);
     padding: 4px;
     border: 1px solid #ddd;
     border-radius: 4px;
@@ -309,7 +344,7 @@ h1 {
 }
 
 .secondary-shift-container:not(.is-collapsed) .shift-input.secondary-shift .time-input {
-    width: 80px;
+    width: clamp(52px, calc(var(--schedule-day-width) - 8px), 80px);
     padding: 4px;
 }
 
@@ -393,6 +428,21 @@ h1 {
 .add-employee {
     margin: 15px 0;
     text-align: center;
+}
+
+body[data-page="schedule"] .container {
+    overflow-x: auto;
+}
+
+body[data-page="schedule"] .limits-row,
+body[data-page="schedule"] .table-header,
+body[data-page="schedule"] .employee-row,
+body[data-page="schedule"] .used-hours-row {
+    min-width: min(100%, var(--schedule-table-min-width));
+}
+
+body[data-page="schedule"] #employees-container {
+    width: 100%;
 }
 
 .table-header {
@@ -544,6 +594,7 @@ h1 {
     margin-bottom: 16px;
     margin-left: calc(var(--timeline-info-width) + var(--timeline-gap));
     width: calc(100% - var(--timeline-info-width) - var(--timeline-gap));
+    min-width: calc(var(--timeline-min-width) - var(--timeline-info-width) - var(--timeline-gap));
 }
 
 .scale-mark {
@@ -568,12 +619,14 @@ h1 {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    width: max(100%, var(--timeline-min-width));
 }
 
 .timeline-row {
     display: flex;
     align-items: center;
     gap: var(--timeline-gap);
+    min-width: var(--timeline-min-width);
 }
 
 .timeline-employee {
@@ -661,6 +714,7 @@ h1 {
     align-items: center;
     justify-content: space-between;
     gap: 16px;
+    flex-wrap: wrap;
 }
 
 .brand {
@@ -1370,6 +1424,19 @@ body.shared-view #share-form select[disabled] {
 }
 
 @media (max-width: 1100px) {
+    :root {
+        --schedule-label-width: 144px;
+        --schedule-label-min: 120px;
+        --schedule-day-width: 96px;
+        --schedule-day-min: 80px;
+        --schedule-total-width: 104px;
+        --schedule-total-min: 90px;
+        --schedule-table-min-width: 880px;
+        --timeline-min-width: 600px;
+        --schedule-label-max: 220px;
+        --schedule-day-max: 150px;
+        --schedule-total-max: 150px;
+    }
     .controls {
         flex-direction: column;
         align-items: stretch;
@@ -1379,9 +1446,64 @@ body.shared-view #share-form select[disabled] {
         width: 100%;
         justify-content: space-between;
     }
+    .timeline-container {
+        --timeline-info-width: 180px;
+        --timeline-gap: 14px;
+    }
+}
+
+@media (max-width: 920px) {
+    :root {
+        --schedule-label-width: 130px;
+        --schedule-label-min: 112px;
+        --schedule-day-width: 90px;
+        --schedule-day-min: 74px;
+        --schedule-total-width: 98px;
+        --schedule-total-min: 84px;
+        --schedule-table-min-width: 820px;
+        --timeline-min-width: 560px;
+        --schedule-label-max: 210px;
+        --schedule-day-max: 144px;
+        --schedule-total-max: 140px;
+    }
+    .app-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .header-actions {
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .header-actions .primary-btn,
+    .header-actions .ghost-btn {
+        flex: 1 1 160px;
+    }
+    .timeline-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    .timeline-controls {
+        width: 100%;
+        justify-content: space-between;
+    }
 }
 
 @media (max-width: 768px) {
+    :root {
+        --schedule-label-width: 118px;
+        --schedule-label-min: 104px;
+        --schedule-day-width: 82px;
+        --schedule-day-min: 68px;
+        --schedule-total-width: 92px;
+        --schedule-total-min: 80px;
+        --schedule-table-min-width: 760px;
+        --timeline-min-width: 520px;
+        --schedule-label-max: 190px;
+        --schedule-day-max: 136px;
+        --schedule-total-max: 132px;
+    }
     .controls-row {
         flex-direction: column;
         align-items: stretch;
@@ -1390,12 +1512,138 @@ body.shared-view #share-form select[disabled] {
     .controls-actions {
         width: 100%;
         justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .week-selector {
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .week-selector input[type="week"] {
+        flex: 1 1 160px;
+        min-width: 0;
+    }
+    .day-cell,
+    .total-cell {
+        padding: 6px 4px;
+    }
+    body[data-page="schedule"] .limits-row,
+    body[data-page="schedule"] .table-header,
+    body[data-page="schedule"] .employee-row,
+    body[data-page="schedule"] .used-hours-row {
+        font-size: 13px;
+    }
+    .timeline-container {
+        --timeline-info-width: 150px;
+        --timeline-gap: 12px;
+    }
+}
+
+@media (max-width: 640px) {
+    :root {
+        --schedule-label-width: 110px;
+        --schedule-label-min: 98px;
+        --schedule-day-width: 76px;
+        --schedule-day-min: 62px;
+        --schedule-total-width: 88px;
+        --schedule-total-min: 76px;
+        --schedule-table-min-width: 720px;
+        --timeline-min-width: 500px;
+        --schedule-label-max: 180px;
+        --schedule-day-max: 126px;
+        --schedule-total-max: 124px;
+    }
+    .table-header .day-name {
+        font-size: 12px;
+    }
+    .table-header .day-cell {
+        gap: 2px;
+    }
+    .time-input {
+        font-size: 13px;
+        padding: 3px;
+    }
+    .share-inline-form .share-fields {
+        grid-template-columns: 1fr;
+    }
+    .share-actions {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    .share-exports {
+        width: 100%;
+        justify-content: flex-start;
+    }
+    .summary-item {
+        flex: 1 1 100%;
+    }
+    .stats-tabs {
+        gap: 6px;
+    }
+    .timeline-container {
+        --timeline-info-width: 140px;
+        --timeline-gap: 10px;
+    }
+    .timeline-controls {
+        gap: 10px;
     }
 }
 
 @media (max-width: 520px) {
+    :root {
+        --schedule-label-width: 100px;
+        --schedule-label-min: 90px;
+        --schedule-day-width: 70px;
+        --schedule-day-min: 56px;
+        --schedule-total-width: 84px;
+        --schedule-total-min: 72px;
+        --schedule-table-min-width: 660px;
+        --timeline-min-width: 460px;
+        --schedule-label-max: 170px;
+        --schedule-day-max: 118px;
+        --schedule-total-max: 118px;
+    }
+    .app-header {
+        padding: 12px 16px;
+    }
+    .header-actions .primary-btn,
+    .header-actions .ghost-btn {
+        flex: 1 1 140px;
+    }
+    .controls-actions {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+    .controls-actions .primary-btn,
+    .controls-actions .ghost-btn,
+    .share-actions .primary-btn {
+        width: 100%;
+    }
+    .timeline-date-picker {
+        width: 100%;
+        justify-content: space-between;
+    }
+    .timeline-controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    .timeline-container {
+        --timeline-info-width: 130px;
+        --timeline-gap: 10px;
+    }
     .leave-dates {
         grid-template-columns: 1fr;
+    }
+    .employee-stats-header,
+    .employee-stats-row {
+        min-width: 520px;
+    }
+    .profile-summary-titles h1 {
+        font-size: 24px;
     }
 }
 
@@ -1780,7 +2028,8 @@ body.schedule-member-view .add-employee {
 .employee-stats-card {
     border: 1px solid #e1e6ef;
     border-radius: 6px;
-    overflow: hidden;
+    overflow-x: auto;
+    background-color: #fff;
 }
 
 .employee-stats-header,
@@ -1790,6 +2039,7 @@ body.schedule-member-view .add-employee {
     gap: 12px;
     padding: 10px 14px;
     align-items: center;
+    min-width: 560px;
 }
 
 .employee-stats-header {
