@@ -5,32 +5,52 @@ document.addEventListener('DOMContentLoaded', function() {
 
 let cachedDayTotals = new Array(7).fill(0);
 let cachedDayLimits = new Array(7).fill(0);
+let currentWeekDates = [];
+let currentTimelineDayIndex = null;
+let lastEditedDayIndex = null;
+let timelineSelectedDate = null;
+let isShareView = false;
+let shareBannerTimer = null;
+let lastGeneratedShareUrl = '';
+let shareLinkExpanded = false;
+let lastShareEmployeeCount = 0;
+let lastShareQrDataUrl = '';
 
+const DAY_NAMES = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота', 'Неділя'];
+const MONTH_NAMES = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
 function initApp() {
-    // Встановлюємо поточний тиждень
     setCurrentWeek();
-    
-    // Додаємо обробники подій
     setupEventListeners();
-    
-    // Завантажуємо збережені дані
-    loadSavedData();
-    
-    // Оновлюємо дати тижня
+    syncShareWeekInput();
+    const shareApplied = loadScheduleFromShareHash();
+
+    if (!shareApplied) {
+        loadSavedData();
+    }
+
     updateWeekDates();
-    
-    // Розраховуємо години
     calculateAllHours();
+    syncShareWeekInput();
+
+    if (shareApplied) {
+        applyShareViewMode();
+    }
 }
 
 // Збереження даних
 function saveData() {
+    if (isShareView) {
+        return;
+    }
     const data = {
         employees: getEmployeesData(),
         week: document.getElementById('week').value,
         limits: getLimitsData()
     };
     localStorage.setItem('workScheduleData', JSON.stringify(data));
+    if (data.week) {
+        localStorage.setItem('workScheduleWeek', data.week);
+    }
 }
 
 function loadSavedData() {
@@ -38,24 +58,47 @@ function loadSavedData() {
     if (savedData) {
         const data = JSON.parse(savedData);
 
-        // Відновлюємо вибраний тиждень
-        document.getElementById('week').value = data.week;
+        const weekInput = document.getElementById('week');
+        if (weekInput && data.week) {
+            weekInput.value = data.week;
+        }
         
-        // Відновлюємо ліміти
         if (data.limits) {
             setLimitsData(data.limits);
         }
         
-        // Відновлюємо працівників
         if (data.employees && data.employees.length > 0) {
-            clearAllEmployees();
-            data.employees.forEach(emp => {
-                addEmployee(emp.name, emp.schedule, false, emp.position || '');
-            });
+            renderEmployeesFromSnapshot(data.employees, { skipSave: true });
+            return;
         }
-    } else {
-        // Якщо немає збережених даних - додаємо приклад працівників
-        addExampleEmployees();
+    }
+
+    addExampleEmployees();
+}
+
+function renderEmployeesFromSnapshot(employees, options = {}) {
+    const container = document.getElementById('employees-container');
+    if (!container) return;
+    container.innerHTML = '';
+    if (!Array.isArray(employees) || employees.length === 0) {
+        calculateAllHours();
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    employees.forEach(emp => {
+        addEmployee(
+            emp.name || 'Працівник',
+            emp.schedule || [],
+            false,
+            emp.position || '',
+            Object.assign({}, options, { container: fragment, deferMetrics: true })
+        );
+    });
+    container.appendChild(fragment);
+    calculateAllHours();
+    if (!options.skipSave) {
+        saveData();
     }
 }
 
@@ -100,30 +143,45 @@ function clearAllEmployees() {
 
 function setCurrentWeek() {
     const weekInput = document.getElementById('week');
-    const savedWeek = localStorage.getItem('workScheduleWeek');
-    if (savedWeek) {
-        weekInput.value = savedWeek;
-    } else {
-        const today = new Date();
-        const year = today.getFullYear();
-        const weekNum = getWeekNumber(today)[1];
-        const weekString = `${year}-W${weekNum.toString().padStart(2, '0')}`;
-        weekInput.value = weekString;
+    if (!weekInput) return;
+    const ensured = ensureWeekValue();
+    if (ensured) {
+        localStorage.setItem('workScheduleWeek', ensured);
     }
 }
 
 function setupEventListeners() {
-    // Кнопки управління
-    document.getElementById('add-employee-btn').addEventListener('click', addNewEmployee);
-    document.getElementById('clear-schedule').addEventListener('click', clearSchedule);
-    document.getElementById('export-pdf').addEventListener('click', exportToPDF);
-    document.getElementById('export-jpg').addEventListener('click', exportToJPG);
+    const addBtn = document.getElementById('add-employee-btn');
+    if (addBtn) {
+        addBtn.addEventListener('click', addNewEmployee);
+    }
+
+    const clearBtn = document.getElementById('clear-schedule');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', clearSchedule);
+    }
+
+    const exportPdfBtn = document.getElementById('export-pdf');
+    if (exportPdfBtn) {
+        exportPdfBtn.addEventListener('click', exportToPDF);
+    }
+
+    const exportJpgBtn = document.getElementById('export-jpg');
+    if (exportJpgBtn) {
+        exportJpgBtn.addEventListener('click', exportToJPG);
+    }
     
-    // Вибір тижня
-    document.getElementById('week').addEventListener('change', function() {
-        updateWeekDates();
-        saveData();
-    });
+    const weekInput = document.getElementById('week');
+    if (weekInput) {
+        weekInput.addEventListener('change', function() {
+            updateWeekDates();
+            syncShareWeekInput();
+            if (this.value) {
+                localStorage.setItem('workScheduleWeek', this.value);
+            }
+            saveData();
+        });
+    }
     
     // Ліміти годин
     document.querySelectorAll('.day-limit-input').forEach(input => {
@@ -134,12 +192,508 @@ function setupEventListeners() {
         });
     });
 
+    const shareTrigger = document.getElementById('share-trigger');
+    const sharePanel = document.getElementById('share-inline-panel');
+    if (shareTrigger && sharePanel) {
+        shareTrigger.addEventListener('click', function() {
+            if (isShareView) {
+                showBannerMessage('У режимі перегляду не можна відкривати панель поділитися.');
+                return;
+            }
+            const wasHidden = sharePanel.classList.contains('hidden');
+            sharePanel.classList.toggle('hidden');
+            shareTrigger.setAttribute('aria-expanded', String(wasHidden));
+        });
+    }
+
+    const shareForm = document.getElementById('share-form');
+    if (shareForm) {
+        shareForm.addEventListener('submit', handleShareSubmit);
+    }
+
+    const timelineToggle = document.getElementById('timeline-toggle');
+    if (timelineToggle) {
+        timelineToggle.addEventListener('click', toggleTimelineVisibility);
+        const timelineContainer = document.querySelector('.timeline-container');
+        const expanded = timelineContainer ? !timelineContainer.classList.contains('is-collapsed') : true;
+        timelineToggle.setAttribute('aria-expanded', String(expanded));
+    }
+
+    const timelineDateInput = document.getElementById('timeline-date');
+    if (timelineDateInput) {
+        timelineDateInput.addEventListener('change', handleTimelineDateChange);
+    }
+
     initStatsTabs();
 }
 
 function addExampleEmployees() {
     
     saveData();
+}
+
+function syncShareWeekInput() {
+    const shareWeekInput = document.getElementById('share-week');
+    const weekInput = document.getElementById('week');
+    if (shareWeekInput && weekInput) {
+        shareWeekInput.value = weekInput.value || '';
+    }
+}
+
+function handleShareSubmit(event) {
+    event.preventDefault();
+    if (isShareView) {
+        showBannerMessage('У режимі перегляду неможливо створити нове посилання.');
+        return;
+    }
+
+    saveData();
+
+    const shareWeekInput = document.getElementById('share-week');
+    const weekInput = document.getElementById('week');
+    const targetWeek = (shareWeekInput && shareWeekInput.value) ? shareWeekInput.value : (weekInput ? weekInput.value : '');
+    const resultEl = document.getElementById('share-result');
+
+    if (!targetWeek) {
+        if (resultEl) {
+            resultEl.textContent = 'Оберіть тиждень для генерації посилання.';
+            resultEl.classList.remove('hidden');
+        }
+        showBannerMessage('Оберіть тиждень перед генерацією посилання.');
+        return;
+    }
+
+    const snapshot = buildScheduleSnapshot();
+    lastShareEmployeeCount = Array.isArray(snapshot.employees) ? snapshot.employees.length : 0;
+
+    const payload = {
+        week: targetWeek,
+        generatedAt: new Date().toISOString(),
+        data: snapshot
+    };
+
+    let encoded;
+    try {
+        encoded = encodeShareData(payload);
+    } catch (error) {
+        console.warn('Не вдалося сформувати дані для посилання', error);
+        showBannerMessage('Не вдалося сформувати посилання.');
+        return;
+    }
+
+    const baseUrl = `${window.location.origin}${window.location.pathname}`;
+    const shareUrl = `${baseUrl}#share=${encoded}`;
+
+    lastGeneratedShareUrl = shareUrl;
+    shareLinkExpanded = false;
+    renderShareResult();
+
+    showBannerMessage('Посилання для перегляду готове.');
+}
+
+function encodeShareData(data) {
+    const json = JSON.stringify(data);
+    try {
+        if (LZ && typeof LZ.compressToEncodedURIComponent === 'function') {
+            const compressed = LZ.compressToEncodedURIComponent(json);
+            if (compressed && compressed.length < json.length) {
+                return compressed;
+            }
+        }
+    } catch (error) {
+        console.warn('Compression error', error);
+    }
+    return encodeURIComponent(json);
+}
+
+function decodeShareData(encoded) {
+    if (!encoded || typeof encoded !== 'string') {
+        throw new Error('invalid-encoded');
+    }
+    let json = '';
+    try {
+        if (LZ && typeof LZ.decompressFromEncodedURIComponent === 'function') {
+            const decompressed = LZ.decompressFromEncodedURIComponent(encoded);
+            if (decompressed && decompressed !== '') {
+                json = decompressed;
+            }
+        }
+    } catch (error) {
+        console.warn('Decompression error', error);
+    }
+    if (!json) {
+        json = decodeURIComponent(encoded);
+    }
+    return JSON.parse(json);
+}
+
+function buildScheduleSnapshot() {
+    const stored = readStoredScheduleData();
+    const current = {
+        limits: getLimitsData(),
+        employees: getEmployeesData()
+    };
+
+    const storedCount = stored && Array.isArray(stored.employees) ? stored.employees.length : 0;
+    const currentCount = Array.isArray(current.employees) ? current.employees.length : 0;
+    const source = stored && storedCount >= currentCount ? stored : current;
+
+    if (!source || !Array.isArray(source.employees)) {
+        return sanitizeSnapshot(current);
+    }
+
+    if (source === stored && currentCount > storedCount) {
+        // Перевага надається актуальному DOM, якщо в ньому більше працівників.
+        source.employees = current.employees;
+    }
+
+    return sanitizeSnapshot(source);
+}
+
+function sanitizeSnapshot(data = {}) {
+    return {
+        limits: Array.isArray(data.limits)
+            ? data.limits.map(value => String(value ?? ''))
+            : getLimitsData().map(value => String(value ?? '')),
+        employees: Array.isArray(data.employees) ? data.employees.map(sanitizeEmployeeRecord) : []
+    };
+}
+
+function sanitizeEmployeeRecord(record = {}) {
+    const name = typeof record.name === 'string' && record.name.trim() ? record.name.trim() : 'Працівник';
+    const position = typeof record.position === 'string' ? record.position.trim() : '';
+    const scheduleSource = Array.isArray(record.schedule) ? record.schedule : [];
+
+    const normalizedSchedule = Array.from({ length: 7 }, (_, index) => {
+        const slot = scheduleSource[index];
+        if (!slot || typeof slot !== 'object') {
+            return { primary: '', secondary: '', locked: false };
+        }
+        const primary = typeof slot.primary === 'string' ? slot.primary : (slot.primary != null ? String(slot.primary) : '');
+        const secondary = typeof slot.secondary === 'string' ? slot.secondary : (slot.secondary != null ? String(slot.secondary) : '');
+        const locked = !!slot.locked;
+        return { primary, secondary, locked };
+    });
+
+    return { name, position, schedule: normalizedSchedule };
+}
+
+function readStoredScheduleData() {
+    try {
+        const raw = localStorage.getItem('workScheduleData');
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') {
+            return null;
+        }
+        return {
+            limits: Array.isArray(parsed.limits) ? parsed.limits : [],
+            employees: Array.isArray(parsed.employees) ? parsed.employees : [],
+            week: typeof parsed.week === 'string' ? parsed.week : null
+        };
+    } catch (error) {
+        console.warn('Не вдалося прочитати збережений розклад', error);
+        return null;
+    }
+}
+
+function renderShareResult() {
+    const resultEl = document.getElementById('share-result');
+    if (!resultEl || !lastGeneratedShareUrl) {
+        return;
+    }
+
+    const shortLink = getShortShareLink(lastGeneratedShareUrl);
+    const displayLink = shareLinkExpanded ? lastGeneratedShareUrl : shortLink;
+    const employeeCountText = lastShareEmployeeCount > 0
+        ? `Працівників у розкладі: ${lastShareEmployeeCount}`
+        : 'Працівників у розкладі: дані відсутні';
+
+    const linkHtml = `<a href="${lastGeneratedShareUrl}" target="_blank" rel="noopener">${displayLink}</a>`;
+
+    resultEl.innerHTML = [
+        '<div class="share-result-content">',
+        `<div class="share-result-line"><span class="share-result-label">Посилання:</span><span class="share-result-link${shareLinkExpanded ? ' is-expanded' : ''}">${linkHtml}</span></div>`,
+        `<div class="share-result-meta">${employeeCountText}</div>`,
+        '<div class="share-result-qr hidden">',
+        '<img alt="QR-код посилання" class="share-result-qr-image">',
+        '<span class="share-result-qr-hint">QR-код посилання на розклад</span>',
+        '</div>',
+        '<div class="share-result-actions">',
+        `<button type="button" class="ghost-btn share-toggle-link" data-action="toggle-link">${shareLinkExpanded ? 'Сховати посилання' : 'Показати повністю'}</button>`,
+        '<button type="button" class="primary-btn share-copy-link" data-action="copy-link">Скопіювати посилання</button>',
+        '<button type="button" class="ghost-btn share-download-qr" data-action="download-qr">Завантажити QR</button>',
+        '</div>',
+        '</div>'
+    ].join('');
+    resultEl.classList.remove('hidden');
+
+    const toggleBtn = resultEl.querySelector('[data-action="toggle-link"]');
+    const copyBtn = resultEl.querySelector('[data-action="copy-link"]');
+    const downloadBtn = resultEl.querySelector('[data-action="download-qr"]');
+    const qrWrapper = resultEl.querySelector('.share-result-qr');
+
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            shareLinkExpanded = !shareLinkExpanded;
+            renderShareResult();
+        });
+    }
+
+    if (copyBtn) {
+        copyBtn.addEventListener('click', copyShareLink);
+    }
+
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', downloadShareQr);
+    }
+
+    updateShareQrPreview(qrWrapper);
+}
+
+function getShortShareLink(url) {
+    if (!url || url.length <= 60) {
+        return url;
+    }
+    const start = url.slice(0, 32);
+    const end = url.slice(-16);
+    return `${start}...${end}`;
+}
+
+function updateShareQrPreview(wrapper) {
+    if (!wrapper) return;
+    const img = wrapper.querySelector('.share-result-qr-image');
+    if (!img || !lastGeneratedShareUrl || typeof QRious === 'undefined') {
+        lastShareQrDataUrl = '';
+        wrapper.classList.add('hidden');
+        return;
+    }
+    try {
+        const qr = new QRious({ value: lastGeneratedShareUrl, size: 220, level: 'H' });
+        lastShareQrDataUrl = qr.toDataURL('image/png');
+        img.src = lastShareQrDataUrl;
+        wrapper.classList.remove('hidden');
+    } catch (error) {
+        console.warn('QR generation failed', error);
+        lastShareQrDataUrl = '';
+        wrapper.classList.add('hidden');
+    }
+}
+
+function downloadShareQr() {
+    if (!lastShareQrDataUrl) {
+        showBannerMessage('QR-код недоступний. Згенеруйте посилання ще раз.');
+        return;
+    }
+    const link = document.createElement('a');
+    link.href = lastShareQrDataUrl;
+    link.download = `timzo-schedule-qr-${Date.now()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+async function copyShareLink() {
+    if (!lastGeneratedShareUrl) {
+        showBannerMessage('Немає посилання для копіювання.');
+        return;
+    }
+
+    const attemptClipboard = async () => {
+        if (typeof navigator !== 'undefined'
+            && navigator.clipboard
+            && typeof navigator.clipboard.writeText === 'function') {
+            await navigator.clipboard.writeText(lastGeneratedShareUrl);
+            return true;
+        }
+        return false;
+    };
+
+    try {
+        const success = await attemptClipboard();
+        if (!success) {
+            throw new Error('clipboard-unsupported');
+        }
+        showBannerMessage('Посилання скопійовано.');
+    } catch (error) {
+        try {
+            if (typeof document === 'undefined') {
+                throw new Error('copy-failed');
+            }
+            const tempInput = document.createElement('input');
+            tempInput.value = lastGeneratedShareUrl;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            tempInput.setSelectionRange(0, tempInput.value.length);
+            const copied = typeof document.execCommand === 'function' && document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            if (copied) {
+                showBannerMessage('Посилання скопійовано.');
+            } else {
+                throw new Error('copy-failed');
+            }
+        } catch (fallbackError) {
+            showBannerMessage('Не вдалося скопіювати посилання.');
+        }
+    }
+}
+
+function loadScheduleFromShareHash() {
+    const hash = window.location.hash || '';
+    if (!hash.startsWith('#share=')) {
+        return false;
+    }
+
+    const encoded = hash.slice(7);
+    if (!encoded) {
+        showBannerMessage('Некоректне посилання спільного доступу.');
+        return false;
+    }
+
+    let payload;
+    try {
+        payload = decodeShareData(encoded);
+    } catch (error) {
+        console.warn('Не вдалося декодувати розклад зі спільного посилання', error);
+        showBannerMessage('Некоректне посилання спільного доступу.');
+        return false;
+    }
+
+    if (!payload || typeof payload !== 'object' || !payload.data || !Array.isArray(payload.data.employees)) {
+        showBannerMessage('Посилання не містить графіку.');
+        return false;
+    }
+
+    const weekInput = document.getElementById('week');
+    if (weekInput && payload.week) {
+        weekInput.value = payload.week;
+        updateWeekDates();
+        syncShareWeekInput();
+    }
+
+    const snapshot = sanitizeSnapshot(payload.data);
+
+    if (!snapshot.employees || snapshot.employees.length === 0) {
+        showBannerMessage('Посилання не містить працівників для відображення.');
+        return false;
+    }
+
+    isShareView = true;
+
+    if (snapshot.limits) {
+        setLimitsData(snapshot.limits);
+    }
+
+    renderEmployeesFromSnapshot(snapshot.employees, { skipSave: true });
+    updateWeekDates();
+    showBannerMessage(`Розклад відкрито у режимі перегляду. Працівників: ${snapshot.employees.length}`);
+    return true;
+}
+
+function applyShareViewMode() {
+    document.body.classList.add('shared-view');
+
+    document.querySelectorAll('.time-input').forEach(input => {
+        input.disabled = true;
+    });
+
+    document.querySelectorAll('.day-limit-input').forEach(input => {
+        input.disabled = true;
+    });
+
+    document.querySelectorAll('.delete-shift-btn').forEach(btn => {
+        btn.disabled = true;
+    });
+
+    document.querySelectorAll('.edit-employee, .delete-employee').forEach(btn => {
+        btn.disabled = true;
+    });
+
+    const addBtn = document.getElementById('add-employee-btn');
+    if (addBtn) {
+        addBtn.disabled = true;
+    }
+
+    const shareForm = document.getElementById('share-form');
+    if (shareForm) {
+        Array.from(shareForm.elements).forEach(element => {
+            if (element.id === 'export-pdf' || element.id === 'export-jpg') return;
+            if (element.id === 'share-week' || element.type === 'submit') {
+                element.disabled = false;
+            } else if (element.type === 'button') {
+                element.disabled = false;
+            } else {
+                element.disabled = true;
+            }
+        });
+    }
+
+    const shareTrigger = document.getElementById('share-trigger');
+    if (shareTrigger) {
+        shareTrigger.disabled = false;
+    }
+
+    const clearBtn = document.getElementById('clear-schedule');
+    if (clearBtn) {
+        clearBtn.disabled = false;
+    }
+}
+
+function exitShareViewMode() {
+    if (!isShareView) return;
+    isShareView = false;
+    document.body.classList.remove('shared-view');
+
+    document.querySelectorAll('.time-input').forEach(input => {
+        input.disabled = false;
+    });
+
+    document.querySelectorAll('.day-limit-input').forEach(input => {
+        input.disabled = false;
+    });
+
+    document.querySelectorAll('.delete-shift-btn').forEach(btn => {
+        btn.disabled = false;
+    });
+
+    document.querySelectorAll('.edit-employee, .delete-employee').forEach(btn => {
+        btn.disabled = false;
+    });
+
+    const addBtn = document.getElementById('add-employee-btn');
+    if (addBtn) {
+        addBtn.disabled = false;
+    }
+
+    const clearBtn = document.getElementById('clear-schedule');
+    if (clearBtn) {
+        clearBtn.disabled = false;
+    }
+
+    const shareTrigger = document.getElementById('share-trigger');
+    if (shareTrigger) {
+        shareTrigger.disabled = false;
+    }
+
+    const shareForm = document.getElementById('share-form');
+    if (shareForm) {
+        Array.from(shareForm.elements).forEach(element => {
+            element.disabled = false;
+        });
+    }
+}
+
+function showBannerMessage(message) {
+    const banner = document.getElementById('share-banner');
+    if (!banner || !message) return;
+    banner.textContent = message;
+    banner.classList.remove('hidden');
+    if (shareBannerTimer) {
+        clearTimeout(shareBannerTimer);
+    }
+    shareBannerTimer = setTimeout(() => {
+        banner.classList.add('hidden');
+    }, 4000);
 }
 
 // Функції для роботи з тижнями
@@ -153,7 +707,13 @@ function getWeekNumber(d) {
 
 function updateWeekDates() {
     const weekInput = document.getElementById('week');
-    const [year, week] = weekInput.value.split('-W');
+    const weekValue = ensureWeekValue();
+    if (!weekInput || !weekValue) return;
+    const parts = weekValue.split('-W');
+    if (parts.length !== 2) return;
+    const year = Number(parts[0]);
+    const week = Number(parts[1]);
+    if (!Number.isInteger(year) || !Number.isInteger(week)) return;
     
     const date = new Date(year, 0, 1);
     const dayNum = date.getDay();
@@ -161,24 +721,42 @@ function updateWeekDates() {
     date.setDate(date.getDate() + dayDiff + (week - 1) * 7);
     
     const dayCells = document.querySelectorAll('.table-header .day-cell');
-    const months = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
-    const dayNames = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота', 'Неділя'];
+    currentWeekDates = [];
     
     for (let i = 0; i < 7; i++) {
         const currentDate = new Date(date);
         currentDate.setDate(date.getDate() + i);
+        currentWeekDates.push(new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()));
         const day = currentDate.getDate();
-        const month = months[currentDate.getMonth()];
+        const month = MONTH_NAMES[currentDate.getMonth()];
         if (!dayCells[i]) continue;
-        dayCells[i].innerHTML = `<div class="day-name">${dayNames[i]}</div><div class="day-date">${day} ${month}</div>`;
-        dayCells[i].dataset.dayName = dayNames[i];
+        dayCells[i].innerHTML = `<div class="day-name">${DAY_NAMES[i]}</div><div class="day-date">${day} ${month}</div>`;
+        dayCells[i].dataset.dayName = DAY_NAMES[i];
         dayCells[i].dataset.dateLabel = `${day} ${month}`;
-        dayCells[i].dataset.fullLabel = `${dayNames[i]} ${day} ${month}`;
+        dayCells[i].dataset.fullLabel = `${DAY_NAMES[i]} ${day} ${month}`;
     }
+
+    if (currentWeekDates.length === 7) {
+        const preferredIndex = getTodayWeekdayIndex();
+        const clampedIndex = Math.min(Math.max(preferredIndex, 0), currentWeekDates.length - 1);
+        lastEditedDayIndex = null;
+        currentTimelineDayIndex = clampedIndex;
+        setTimelineSelectedDate(currentWeekDates[clampedIndex]);
+    } else {
+        currentTimelineDayIndex = -1;
+        setTimelineSelectedDate(new Date());
+    }
+
+    updateTimeline();
+    syncShareWeekInput();
 }
 
 // Функції для роботи з працівниками
 function addNewEmployee() {
+    if (isShareView) {
+        showBannerMessage('У режимі перегляду не можна додавати працівників.');
+        return;
+    }
     const name = prompt('Введіть ім\'я працівника:');
     if (!name) return;
     const position = prompt('Введіть посаду працівника:') || '';
@@ -186,32 +764,36 @@ function addNewEmployee() {
     addEmployee(name, emptySchedule, true, position);
 }
 
-function addEmployee(name, schedule, shouldSave = true, position = '') {
-    const container = document.getElementById('employees-container');
+function addEmployee(name, schedule, shouldSave = true, position = '', options = {}) {
+    const target = options.container || document.getElementById('employees-container');
+    if (!target) return null;
     const employeeRow = document.createElement('div');
     employeeRow.className = 'employee-row';
     
-    // Створення комірки з ім'ям
     const labelCell = createNameCell(name, position);
     employeeRow.appendChild(labelCell);
     
-    // Створення комірок з графіком
     const normalizedSchedule = Array.from({ length: 7 }, (_, index) => normalizeScheduleValue(schedule ? schedule[index] : undefined));
     for (let i = 0; i < 7; i++) {
         const dayCell = createDayCell(normalizedSchedule[i]);
+        dayCell.dataset.dayIndex = i;
         employeeRow.appendChild(dayCell);
     }
     
-    // Додавання комірки з загальною кількістю годин
     const totalCell = createTotalCell();
     employeeRow.appendChild(totalCell);
     
-    container.appendChild(employeeRow);
-    calculateAllHours();
+    target.appendChild(employeeRow);
     
-    if (shouldSave) {
+    if (!options.deferMetrics) {
+        calculateAllHours();
+    }
+    
+    if (shouldSave && !options.skipSave) {
         saveData();
     }
+
+    return employeeRow;
 }
 
 function createNameCell(name, position = '') {
@@ -246,7 +828,12 @@ function createNameCell(name, position = '') {
     editBtn.className = 'edit-employee';
     editBtn.innerHTML = '<span aria-hidden="true">✎</span>';
     editBtn.title = 'Редагувати працівника';
+    editBtn.setAttribute('aria-label', 'Редагувати працівника');
     editBtn.addEventListener('click', function() {
+        if (isShareView) {
+            showBannerMessage('У режимі перегляду не можна редагувати працівника.');
+            return;
+        }
         const row = this.closest('.employee-row');
         if (!row) return;
 
@@ -285,6 +872,7 @@ function createNameCell(name, position = '') {
         }
 
         updateWeeklyStats();
+        updateTimeline();
         saveData();
     });
 
@@ -292,6 +880,10 @@ function createNameCell(name, position = '') {
     deleteBtn.className = 'delete-employee';
     deleteBtn.textContent = '×';
     deleteBtn.addEventListener('click', function() {
+        if (isShareView) {
+            showBannerMessage('У режимі перегляду не можна видаляти працівників.');
+            return;
+        }
         this.closest('.employee-row').remove();
         calculateAllHours();
         saveData();
@@ -345,6 +937,10 @@ function createShiftInput(type, value) {
         deleteBtn.title = 'Видалити другу зміну';
         deleteBtn.addEventListener('click', function(event) {
             event.stopPropagation();
+            if (isShareView) {
+                showBannerMessage('У режимі перегляду зміни недоступні.');
+                return;
+            }
             if (input.value.trim() !== '') {
                 input.value = '';
                 input.dispatchEvent(new Event('change'));
@@ -384,7 +980,12 @@ function setupShiftInputBehavior(input, type) {
     });
 
     input.addEventListener('change', function() {
+        if (isShareView) {
+            updateDeleteButtonVisibility(deleteBtn, input.value);
+            return;
+        }
         if (validateTimeInput(this, { defaultPlaceholder })) {
+            noteEditedDayFromInput(this);
             calculateAllHours();
             saveData();
         }
@@ -451,7 +1052,7 @@ function createDayCell(scheduleValue) {
         secondaryInput: secondaryShift.input,
         secondaryContainer,
         dayOffLabel
-    }, locked, { skipSave: true, skipRecalculate: true });
+    }, locked, { skipSave: true, skipRecalculate: true, skipTimeline: true });
 
     return dayCell;
 }
@@ -519,6 +1120,15 @@ function setupLockInteractions({ dayCell, primaryInput, secondaryInput, secondar
 }
 
 function setDayLockState(dayCell, config, locked, options = {}) {
+    const dayIndex = parseInt(dayCell.dataset.dayIndex || '-1', 10);
+    if (!Number.isNaN(dayIndex) && dayIndex >= 0 && dayIndex <= 6) {
+        lastEditedDayIndex = dayIndex;
+        currentTimelineDayIndex = dayIndex;
+        if (!options.skipTimeline && currentWeekDates[dayIndex]) {
+            setTimelineSelectedDate(currentWeekDates[dayIndex]);
+        }
+    }
+
     dayCell.classList.toggle('is-locked', locked);
     dayCell.dataset.locked = locked ? 'true' : 'false';
 
@@ -564,6 +1174,8 @@ function setDayLockState(dayCell, config, locked, options = {}) {
 
     if (!options.skipRecalculate) {
         calculateAllHours();
+    } else if (!options.skipTimeline) {
+        updateTimeline();
     }
 
     if (!options.skipSave) {
@@ -677,40 +1289,30 @@ function createTotalCell() {
 }
 
 function clearSchedule() {
-    if (confirm('Ви впевнені, що хочете очистити графік всіх працівників?')) {
-        document.querySelectorAll('.employee-row .day-cell').forEach(cell => {
-            const primaryInput = cell.querySelector('.time-input[data-shift-type="primary"]');
-            const secondaryInput = cell.querySelector('.time-input[data-shift-type="secondary"]');
-            const secondaryContainer = cell.querySelector('.secondary-shift-container');
-            const dayOffLabel = cell.querySelector('.day-off-label');
-
-            setDayLockState(cell, {
-                primaryInput,
-                secondaryInput,
-                secondaryContainer,
-                dayOffLabel
-            }, false, { skipSave: true, skipRecalculate: true });
-
-            if (primaryInput) {
-                primaryInput.value = '';
-                primaryInput.disabled = false;
-                updateShiftInputPlaceholders(primaryInput);
-            }
-
-            if (secondaryInput) {
-                secondaryInput.value = '';
-                secondaryInput.disabled = false;
-                updateShiftInputPlaceholders(secondaryInput);
-            }
-
-            if (secondaryContainer) {
-                collapseSecondaryShift(secondaryContainer);
-            }
+    if (isShareView) {
+        if (!confirm('Створити новий графік для редагування?')) {
+            return;
+        }
+        exitShareViewMode();
+        clearAllEmployees();
+        document.querySelectorAll('.day-limit-input').forEach(input => {
+            input.value = input.defaultValue || input.value;
         });
-
-        calculateAllHours();
         saveData();
+        updateWeekDates();
+        calculateAllHours();
+        showBannerMessage('Створено новий порожній графік для редагування.');
+        return;
     }
+    if (!confirm('Ви впевнені, що хочете очистити графік всіх працівників?')) {
+        return;
+    }
+    document.querySelectorAll('.employee-row .time-input').forEach(input => {
+        input.value = '';
+        input.placeholder = 'вихідний';
+        input.dispatchEvent(new Event('change'));
+    });
+    saveData();
 }
 
 // Валідація та розрахунки
@@ -780,7 +1382,7 @@ function calculateUsedHours() {
     const dayTotals = [0, 0, 0, 0, 0, 0, 0];
     const dayLimitInputs = document.querySelectorAll('.day-limit-input');
     const dayLimits = Array.from(dayLimitInputs).map(input => parseInt(input.value) || 0);
-    const dayNames = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', 'П\'ятниця', 'Субота', 'Неділя'];
+    const dayNames = DAY_NAMES;
     const dateCells = document.querySelectorAll('.table-header .day-cell');
     
     // Розраховуємо суму годин по дням
@@ -798,6 +1400,7 @@ function calculateUsedHours() {
     updateUsedHoursRow(dayTotals, dayLimits, dayNames, dateCells);
 
     updateWeeklyStats();
+    updateTimeline();
 }
 
 function updateWeeklyLimitTotal() {
@@ -852,7 +1455,6 @@ function updateWeeklyStats() {
 
     const rows = Array.from(document.querySelectorAll('.employee-row'));
     let totalHoursAll = 0;
-    let totalWorkingDaysAll = 0;
 
     rows.forEach(row => {
         const name = row.querySelector('.employee-name') ? row.querySelector('.employee-name').textContent : '';
@@ -863,8 +1465,6 @@ function updateWeeklyStats() {
         const averageHours = workingDays > 0 ? totalHours / workingDays : 0;
 
         totalHoursAll += totalHours;
-        totalWorkingDaysAll += workingDays;
-
         const rowEl = document.createElement('div');
         rowEl.className = 'employee-stats-row';
 
@@ -925,7 +1525,18 @@ function updateWeeklyStats() {
     if (limitUsageBar) {
         const clamped = Math.max(0, Math.min(100, percentValue));
         limitUsageBar.style.width = `${clamped}%`;
+        limitUsageBar.style.background = getUsageGradient(percentValue);
     }
+}
+
+function getUsageGradient(percent) {
+    if (percent <= 104) {
+        return 'linear-gradient(90deg, #4CAF50, #81C784)';
+    }
+    if (percent <= 110) {
+        return 'linear-gradient(90deg, #FBC02D, #FFEB3B)';
+    }
+    return 'linear-gradient(90deg, #E53935, #FF7043)';
 }
 
 function initStatsTabs() {
@@ -943,6 +1554,389 @@ function initStatsTabs() {
             });
         });
     });
+}
+
+function renderTimelineScale(range) {
+    const scale = document.getElementById('timeline-scale');
+    if (!scale) return;
+
+    scale.innerHTML = '';
+
+    const start = Math.max(0, Math.min(range?.startMinutes ?? 0, 24 * 60));
+    let end = Math.min(24 * 60, Math.max(range?.endMinutes ?? 24 * 60, start + 60));
+    if (end <= start) {
+        end = Math.min(24 * 60, start + 60);
+    }
+
+    const duration = Math.max(end - start, 60);
+    const startHour = Math.floor(start / 60);
+    const endHour = Math.ceil(end / 60);
+
+    for (let hour = startHour; hour <= endHour; hour++) {
+        const mark = document.createElement('div');
+        const minutes = hour * 60;
+        const percent = ((minutes - start) / duration) * 100;
+        if (percent < -5 || percent > 105) continue;
+        const clamped = Math.min(Math.max(percent, 0), 100);
+        mark.className = 'scale-mark';
+        mark.style.left = `${clamped}%`;
+        if (clamped < 1) {
+            mark.style.transform = 'translateX(0)';
+        } else if (clamped > 99) {
+            mark.style.transform = 'translateX(-100%)';
+        }
+        mark.textContent = `${hour.toString().padStart(2, '0')}:00`;
+        scale.appendChild(mark);
+    }
+}
+
+function updateTimeline(forceIndex = null, forceDate = null) {
+    const body = document.getElementById('timeline-body');
+    const labelEl = document.getElementById('timeline-day-label');
+    if (!body || !labelEl) return;
+
+    if (forceDate instanceof Date && !Number.isNaN(forceDate)) {
+        setTimelineSelectedDate(forceDate);
+    }
+
+    if (typeof forceIndex === 'number' && !Number.isNaN(forceIndex)) {
+        currentTimelineDayIndex = forceIndex;
+        lastEditedDayIndex = forceIndex;
+        if (currentWeekDates[forceIndex]) {
+            setTimelineSelectedDate(currentWeekDates[forceIndex]);
+        }
+    }
+
+    let selectedDate = timelineSelectedDate;
+
+    if (!selectedDate && currentWeekDates.length === 7) {
+        const defaultIndex = getDefaultTimelineDayIndex();
+        if (!Number.isNaN(defaultIndex) && currentWeekDates[defaultIndex]) {
+            setTimelineSelectedDate(currentWeekDates[defaultIndex]);
+            currentTimelineDayIndex = defaultIndex;
+            lastEditedDayIndex = null;
+            selectedDate = timelineSelectedDate;
+        }
+    }
+
+    let dayIndex = -1;
+    if (selectedDate && currentWeekDates.length === 7) {
+        dayIndex = currentWeekDates.findIndex(d => isSameDay(d, selectedDate));
+    }
+
+    const dateInput = document.getElementById('timeline-date');
+    syncTimelineDateInput(selectedDate);
+
+    const isDateInWeek = dayIndex !== -1;
+    if (isDateInWeek) {
+        currentTimelineDayIndex = dayIndex;
+        lastEditedDayIndex = dayIndex;
+    }
+
+    let displayDate = selectedDate;
+    if (!displayDate && isDateInWeek && currentWeekDates[dayIndex]) {
+        displayDate = currentWeekDates[dayIndex];
+    }
+
+    body.innerHTML = '';
+
+    if (!displayDate) {
+        renderTimelineScale({ startMinutes: 0, endMinutes: 24 * 60 });
+        labelEl.textContent = 'Дата не вибрана';
+        const empty = document.createElement('div');
+        empty.className = 'timeline-empty';
+        empty.textContent = 'Оберіть дату, щоб побачити таймлайн.';
+        body.appendChild(empty);
+        return;
+    }
+
+    const dayName = getDayNameFromDate(displayDate);
+    const dateLabel = formatDisplayDate(displayDate);
+    labelEl.textContent = isDateInWeek
+        ? `${dateLabel} · ${dayName}`
+        : `${dateLabel} · ${dayName} (поза поточним тижнем)`;
+
+    if (!isDateInWeek) {
+        renderTimelineScale({ startMinutes: 0, endMinutes: 24 * 60 });
+        const info = document.createElement('div');
+        info.className = 'timeline-empty';
+        info.textContent = 'Дата не входить до поточного тижня. Оновіть тиждень або виберіть іншу дату.';
+        body.appendChild(info);
+        return;
+    }
+
+    const rows = Array.from(document.querySelectorAll('.employee-row'));
+    const segmentsByEmployee = [];
+    let minStart = Infinity;
+    let maxEnd = -Infinity;
+
+    rows.forEach(row => {
+        const dayCells = row.querySelectorAll('.day-cell');
+        const cell = dayCells[dayIndex];
+        if (!cell || cell.classList.contains('is-locked')) return;
+
+        const segments = extractShiftsFromCell(cell);
+        if (segments.length === 0) return;
+
+        segments.forEach(segment => {
+            minStart = Math.min(minStart, segment.startMinutes);
+            maxEnd = Math.max(maxEnd, segment.endMinutes);
+        });
+
+        segmentsByEmployee.push({ row, segments });
+    });
+
+    if (segmentsByEmployee.length === 0) {
+        renderTimelineScale({ startMinutes: 0, endMinutes: 24 * 60 });
+        const empty = document.createElement('div');
+        empty.className = 'timeline-empty';
+        empty.textContent = 'Немає запланованих змін на цей день';
+        body.appendChild(empty);
+        return;
+    }
+
+    let startRange = Math.max(0, Math.floor(minStart / 60) * 60 - 60);
+    let endRange = Math.min(24 * 60, Math.ceil(maxEnd / 60) * 60 + 60);
+    if (endRange <= startRange) {
+        endRange = Math.min(24 * 60, startRange + 60);
+    }
+    const rangeDuration = Math.max(endRange - startRange, 60);
+
+    renderTimelineScale({ startMinutes: startRange, endMinutes: endRange });
+
+    segmentsByEmployee.forEach(({ row, segments }) => {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'timeline-row';
+
+        const employeeInfo = document.createElement('div');
+        employeeInfo.className = 'timeline-employee';
+        const name = row.querySelector('.employee-name') ? row.querySelector('.employee-name').textContent : '';
+        const position = row.querySelector('.employee-position') ? row.querySelector('.employee-position').textContent : '';
+        employeeInfo.innerHTML = `<div class="name">${name}</div>` + (position ? `<div class="position">${position}</div>` : '');
+
+        const track = document.createElement('div');
+        track.className = 'timeline-track';
+
+        segments.forEach(segment => {
+            const adjustedStart = Math.max(segment.startMinutes, startRange);
+            const adjustedEnd = Math.min(segment.endMinutes, endRange);
+            if (adjustedEnd <= adjustedStart) return;
+
+            const startPercent = ((adjustedStart - startRange) / rangeDuration) * 100;
+            const widthPercent = Math.max(((adjustedEnd - adjustedStart) / rangeDuration) * 100, 1.5);
+
+            const segEl = document.createElement('div');
+            segEl.className = `timeline-segment ${segment.type}`;
+            const leftPercent = Math.min(Math.max(startPercent, 0), 100);
+            const maxWidth = Math.max(0, 100 - leftPercent);
+            const finalWidth = Math.min(widthPercent, maxWidth);
+            if (finalWidth <= 0) return;
+            segEl.style.left = `${leftPercent}%`;
+            segEl.style.width = `${finalWidth}%`;
+            segEl.textContent = segment.label;
+            track.appendChild(segEl);
+        });
+
+        rowEl.appendChild(employeeInfo);
+        rowEl.appendChild(track);
+        body.appendChild(rowEl);
+    });
+}
+
+function noteEditedDayFromInput(input) {
+    const dayCell = input.closest('.day-cell');
+    noteEditedDayFromCell(dayCell, { triggerTimeline: true });
+}
+
+function noteEditedDayFromCell(dayCell, options = {}) {
+    if (!dayCell) return;
+    const index = parseInt(dayCell.dataset.dayIndex || '-1', 10);
+    if (Number.isNaN(index) || index < 0 || index > 6) return;
+    lastEditedDayIndex = index;
+    currentTimelineDayIndex = index;
+    if (currentWeekDates[index]) {
+        setTimelineSelectedDate(currentWeekDates[index], { skipInputSync: !!options.skipInputSync });
+    }
+    if (options.triggerTimeline) {
+        updateTimeline(index);
+    }
+}
+
+function extractShiftsFromCell(cell) {
+    const segments = [];
+    const primaryInput = cell.querySelector('.time-input[data-shift-type="primary"]');
+    const secondaryInput = cell.querySelector('.time-input[data-shift-type="secondary"]');
+
+    const primaryRange = parseShiftRange(primaryInput ? primaryInput.value : '');
+    if (primaryRange) {
+        segments.push({
+            type: 'primary',
+            startMinutes: primaryRange.startMinutes,
+            endMinutes: primaryRange.endMinutes,
+            durationMinutes: primaryRange.durationMinutes,
+            label: `${formatTimeForTimeline(primaryRange.startTime)} – ${formatTimeForTimeline(primaryRange.endTime)}`
+        });
+    }
+
+    const secondaryRange = parseShiftRange(secondaryInput ? secondaryInput.value : '');
+    if (secondaryRange) {
+        segments.push({
+            type: 'secondary',
+            startMinutes: secondaryRange.startMinutes,
+            endMinutes: secondaryRange.endMinutes,
+            durationMinutes: secondaryRange.durationMinutes,
+            label: `${formatTimeForTimeline(secondaryRange.startTime)} – ${formatTimeForTimeline(secondaryRange.endTime)}`
+        });
+    }
+
+    return segments.sort((a, b) => a.startMinutes - b.startMinutes);
+}
+
+function setTimelineSelectedDate(date, options = {}) {
+    if (date && !Number.isNaN(date.getTime())) {
+        timelineSelectedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    } else {
+        timelineSelectedDate = null;
+    }
+
+    if (!options.skipInputSync) {
+        syncTimelineDateInput(timelineSelectedDate);
+    }
+}
+
+function syncTimelineDateInput(date) {
+    const input = document.getElementById('timeline-date');
+    if (!input) return;
+    const newValue = date ? formatDateISO(date) : '';
+    if (input.value !== newValue) {
+        input.value = newValue;
+    }
+}
+
+function formatDateISO(date) {
+    if (!date) return '';
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function formatDisplayDate(date) {
+    if (!date) return '';
+    const day = date.getDate();
+    const monthName = MONTH_NAMES[date.getMonth()] || '';
+    return `${day} ${monthName}`;
+}
+
+function parseDateInputValue(value) {
+    if (!value) return null;
+    const parts = value.split('-');
+    if (parts.length !== 3) return null;
+    const year = Number(parts[0]);
+    const month = Number(parts[1]) - 1;
+    const day = Number(parts[2]);
+    if ([year, month, day].some(Number.isNaN)) return null;
+    return new Date(year, month, day);
+}
+
+function handleTimelineDateChange(event) {
+    const value = event.target.value;
+    if (!value) {
+        if (currentWeekDates.length === 7) {
+            const defaultIndex = getDefaultTimelineDayIndex();
+            if (!Number.isNaN(defaultIndex) && currentWeekDates[defaultIndex]) {
+                setTimelineSelectedDate(currentWeekDates[defaultIndex]);
+                updateTimeline(defaultIndex);
+                return;
+            }
+        }
+        setTimelineSelectedDate(null);
+        updateTimeline();
+        return;
+    }
+
+    const selected = parseDateInputValue(value);
+    if (!selected) return;
+
+    setTimelineSelectedDate(selected);
+    if (currentWeekDates.length === 7) {
+        const index = currentWeekDates.findIndex(d => isSameDay(d, selected));
+        if (index !== -1) {
+            updateTimeline(index);
+            return;
+        }
+    }
+
+    updateTimeline(null, selected);
+}
+
+function toggleTimelineVisibility() {
+    const container = document.querySelector('.timeline-container');
+    const toggleBtn = document.getElementById('timeline-toggle');
+    if (!container || !toggleBtn) return;
+    const collapsed = container.classList.toggle('is-collapsed');
+    toggleBtn.textContent = collapsed ? 'Показати' : 'Сховати';
+    toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+}
+
+function getDayNameFromDate(date) {
+    const jsDay = date.getDay();
+    const index = (jsDay + 6) % 7;
+    return DAY_NAMES[index] || DAY_NAMES[0];
+}
+
+function parseShiftRange(value) {
+    if (!value) return null;
+    const parts = value.split('-');
+    if (parts.length !== 2) return null;
+
+    const startTime = parseTimeString(parts[0]);
+    const endTime = parseTimeString(parts[1]);
+
+    if (!startTime || !endTime) return null;
+
+    const startMinutes = timeToMinutes(startTime);
+    const endMinutes = timeToMinutes(endTime);
+
+    if (endMinutes <= startMinutes) return null;
+
+    return {
+        startTime,
+        endTime,
+        startMinutes,
+        endMinutes,
+        durationMinutes: endMinutes - startMinutes
+    };
+}
+
+function formatTimeForTimeline(time) {
+    return `${time.hour.toString().padStart(2, '0')}:${time.minute.toString().padStart(2, '0')}`;
+}
+
+function getDefaultTimelineDayIndex() {
+    if (!currentWeekDates || currentWeekDates.length !== 7) {
+        return 0;
+    }
+    const today = new Date();
+    for (let i = 0; i < currentWeekDates.length; i++) {
+        if (isSameDay(currentWeekDates[i], today)) {
+            return i;
+        }
+    }
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    for (let i = 0; i < currentWeekDates.length; i++) {
+        if (isSameDay(currentWeekDates[i], tomorrow)) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+function isSameDay(dateA, dateB) {
+    return dateA.getFullYear() === dateB.getFullYear() &&
+        dateA.getMonth() === dateB.getMonth() &&
+        dateA.getDate() === dateB.getDate();
 }
 
 // Сповіщення
@@ -1000,3 +1994,428 @@ function downloadImage(canvas) {
     link.href = canvas.toDataURL('image/jpeg', 0.9);
     link.click();
 }
+function getTodayWeekdayIndex() {
+    const today = new Date();
+    return (today.getDay() + 6) % 7;
+}
+
+function ensureWeekValue() {
+    const weekInput = document.getElementById('week');
+    if (!weekInput) return '';
+    let value = weekInput.value;
+    if (!value || !value.includes('-W')) {
+        const today = new Date();
+        const [year, weekNum] = getWeekNumber(today);
+        value = `${year}-W${weekNum.toString().padStart(2, '0')}`;
+        weekInput.value = value;
+        localStorage.setItem('workScheduleWeek', value);
+    }
+    return value;
+}
+
+const LZ = (function() {
+    const f = String.fromCharCode;
+    const keyStrUriSafe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$";
+    const baseReverseDic = {};
+
+    function getBaseValue(alphabet, character) {
+        if (!baseReverseDic[alphabet]) {
+            baseReverseDic[alphabet] = {};
+            for (let i = 0; i < alphabet.length; i++) {
+                baseReverseDic[alphabet][alphabet.charAt(i)] = i;
+            }
+        }
+        return baseReverseDic[alphabet][character];
+    }
+
+    function compressToBase62(input) {
+        if (input == null) return '';
+        let i, value,
+            context_dictionary = {},
+            context_dictionaryToCreate = {},
+            context_c = '',
+            context_wc = '',
+            context_w = '',
+            context_enlargeIn = 2,
+            context_dictSize = 3,
+            context_numBits = 2,
+            context_data = [],
+            context_data_val = 0,
+            context_data_position = 0,
+            ii;
+
+        const getCharFromInt = function(a) {
+            return keyStrUriSafe.charAt(a);
+        };
+
+        for (ii = 0; ii < input.length; ii += 1) {
+            context_c = input.charAt(ii);
+            if (!Object.prototype.hasOwnProperty.call(context_dictionary, context_c)) {
+                context_dictionary[context_c] = context_dictSize++;
+                context_dictionaryToCreate[context_c] = true;
+            }
+            context_wc = context_w + context_c;
+            if (Object.prototype.hasOwnProperty.call(context_dictionary, context_wc)) {
+                context_w = context_wc;
+            } else {
+                if (Object.prototype.hasOwnProperty.call(context_dictionaryToCreate, context_w)) {
+                    if (context_w.charCodeAt(0) < 256) {
+                        for (i = 0; i < context_numBits; i++) {
+                            context_data_val <<= 1;
+                            if (context_data_position === 5) {
+                                context_data_position = 0;
+                                context_data.push(getCharFromInt(context_data_val));
+                                context_data_val = 0;
+                            } else {
+                                context_data_position++;
+                            }
+                        }
+                        value = context_w.charCodeAt(0);
+                        for (i = 0; i < 8; i++) {
+                            context_data_val = (context_data_val << 1) | (value & 1);
+                            if (context_data_position === 5) {
+                                context_data_position = 0;
+                                context_data.push(getCharFromInt(context_data_val));
+                                context_data_val = 0;
+                            } else {
+                                context_data_position++;
+                            }
+                            value >>= 1;
+                        }
+                    } else {
+                        value = 1;
+                        for (i = 0; i < context_numBits; i++) {
+                            context_data_val = (context_data_val << 1) | value;
+                            if (context_data_position === 5) {
+                                context_data_position = 0;
+                                context_data.push(getCharFromInt(context_data_val));
+                                context_data_val = 0;
+                            } else {
+                                context_data_position++;
+                            }
+                            value = 0;
+                        }
+                        value = context_w.charCodeAt(0);
+                        for (i = 0; i < 16; i++) {
+                            context_data_val = (context_data_val << 1) | (value & 1);
+                            if (context_data_position === 5) {
+                                context_data_position = 0;
+                                context_data.push(getCharFromInt(context_data_val));
+                                context_data_val = 0;
+                            } else {
+                                context_data_position++;
+                            }
+                            value >>= 1;
+                        }
+                    }
+                    context_enlargeIn--;
+                    if (context_enlargeIn === 0) {
+                        context_enlargeIn = Math.pow(2, context_numBits);
+                        context_numBits++;
+                    }
+                    delete context_dictionaryToCreate[context_w];
+                } else {
+                    value = context_dictionary[context_w];
+                    for (i = 0; i < context_numBits; i++) {
+                        context_data_val = (context_data_val << 1) | (value & 1);
+                        if (context_data_position === 5) {
+                            context_data_position = 0;
+                            context_data.push(getCharFromInt(context_data_val));
+                            context_data_val = 0;
+                        } else {
+                            context_data_position++;
+                        }
+                        value >>= 1;
+                    }
+                }
+                context_enlargeIn--;
+                if (context_enlargeIn === 0) {
+                    context_enlargeIn = Math.pow(2, context_numBits);
+                    context_numBits++;
+                }
+                context_dictionary[context_wc] = context_dictSize++;
+                context_w = String(context_c);
+            }
+        }
+
+        if (context_w !== '') {
+            if (Object.prototype.hasOwnProperty.call(context_dictionaryToCreate, context_w)) {
+                if (context_w.charCodeAt(0) < 256) {
+                    for (i = 0; i < context_numBits; i++) {
+                        context_data_val <<= 1;
+                        if (context_data_position === 5) {
+                            context_data_position = 0;
+                            context_data.push(getCharFromInt(context_data_val));
+                            context_data_val = 0;
+                        } else {
+                            context_data_position++;
+                        }
+                    }
+                    value = context_w.charCodeAt(0);
+                    for (i = 0; i < 8; i++) {
+                        context_data_val = (context_data_val << 1) | (value & 1);
+                        if (context_data_position === 5) {
+                            context_data_position = 0;
+                            context_data.push(getCharFromInt(context_data_val));
+                            context_data_val = 0;
+                        } else {
+                            context_data_position++;
+                        }
+                        value >>= 1;
+                    }
+                } else {
+                    value = 1;
+                    for (i = 0; i < context_numBits; i++) {
+                        context_data_val = (context_data_val << 1) | value;
+                        if (context_data_position === 5) {
+                            context_data_position = 0;
+                            context_data.push(getCharFromInt(context_data_val));
+                            context_data_val = 0;
+                        } else {
+                            context_data_position++;
+                        }
+                        value = 0;
+                    }
+                    value = context_w.charCodeAt(0);
+                    for (i = 0; i < 16; i++) {
+                        context_data_val = (context_data_val << 1) | (value & 1);
+                        if (context_data_position === 5) {
+                            context_data_position = 0;
+                            context_data.push(getCharFromInt(context_data_val));
+                            context_data_val = 0;
+                        } else {
+                            context_data_position++;
+                        }
+                        value >>= 1;
+                    }
+                }
+                context_enlargeIn--;
+                if (context_enlargeIn === 0) {
+                    context_enlargeIn = Math.pow(2, context_numBits);
+                    context_numBits++;
+                }
+                delete context_dictionaryToCreate[context_w];
+            } else {
+                value = context_dictionary[context_w];
+                for (i = 0; i < context_numBits; i++) {
+                    context_data_val = (context_data_val << 1) | (value & 1);
+                    if (context_data_position === 5) {
+                        context_data_position = 0;
+                        context_data.push(getCharFromInt(context_data_val));
+                        context_data_val = 0;
+                    } else {
+                        context_data_position++;
+                    }
+                    value >>= 1;
+                }
+            }
+            context_enlargeIn--;
+            if (context_enlargeIn === 0) {
+                context_enlargeIn = Math.pow(2, context_numBits);
+                context_numBits++;
+            }
+        }
+
+        value = 2;
+        for (i = 0; i < context_numBits; i++) {
+            context_data_val = (context_data_val << 1) | (value & 1);
+            if (context_data_position === 5) {
+                context_data_position = 0;
+                context_data.push(getCharFromInt(context_data_val));
+                context_data_val = 0;
+            } else {
+                context_data_position++;
+            }
+            value >>= 1;
+        }
+
+        while (true) {
+            context_data_val <<= 1;
+            if (context_data_position === 5) {
+                context_data.push(getCharFromInt(context_data_val));
+                break;
+            } else {
+                context_data_position++;
+            }
+        }
+
+        return context_data.join('');
+    }
+
+    function decompressFromBase62(input) {
+        if (input == null) return '';
+        if (input === '') return null;
+        let dictionary = [],
+            next,
+            enlargeIn = 4,
+            dictSize = 4,
+            numBits = 3,
+            entry = '',
+            result = [],
+            i,
+            w,
+            bits, resb, maxpower, power,
+            c,
+            data = { val: getBaseValue(keyStrUriSafe, input.charAt(0)), position: 32, index: 1 };
+
+        const getNextValue = function() {
+            if (data.index > input.length) {
+                return 0;
+            }
+            const value = getBaseValue(keyStrUriSafe, input.charAt(data.index));
+            data.index++;
+            return value;
+        };
+
+        for (i = 0; i < 3; i += 1) {
+            dictionary[i] = i;
+        }
+
+        bits = 0;
+        maxpower = Math.pow(2, 2);
+        power = 1;
+        while (power !== maxpower) {
+            resb = data.val & data.position;
+            data.position >>= 1;
+            if (data.position === 0) {
+                data.position = 32;
+                data.val = getNextValue();
+            }
+            bits |= (resb > 0 ? 1 : 0) * power;
+            power <<= 1;
+        }
+
+        switch (next = bits) {
+            case 0:
+                bits = 0;
+                maxpower = Math.pow(2, 8);
+                power = 1;
+                while (power !== maxpower) {
+                    resb = data.val & data.position;
+                    data.position >>= 1;
+                    if (data.position === 0) {
+                        data.position = 32;
+                        data.val = getNextValue();
+                    }
+                    bits |= (resb > 0 ? 1 : 0) * power;
+                    power <<= 1;
+                }
+                c = f(bits);
+                break;
+            case 1:
+                bits = 0;
+                maxpower = Math.pow(2, 16);
+                power = 1;
+                while (power !== maxpower) {
+                    resb = data.val & data.position;
+                    data.position >>= 1;
+                    if (data.position === 0) {
+                        data.position = 32;
+                        data.val = getNextValue();
+                    }
+                    bits |= (resb > 0 ? 1 : 0) * power;
+                    power <<= 1;
+                }
+                c = f(bits);
+                break;
+            case 2:
+                return '';
+        }
+
+        dictionary[3] = c;
+        w = c;
+        result.push(c);
+        while (true) {
+            if (data.index > input.length) {
+                return '';
+            }
+
+            bits = 0;
+            maxpower = Math.pow(2, numBits);
+            power = 1;
+            while (power !== maxpower) {
+                resb = data.val & data.position;
+                data.position >>= 1;
+                if (data.position === 0) {
+                    data.position = 32;
+                    data.val = getNextValue();
+                }
+                bits |= (resb > 0 ? 1 : 0) * power;
+                power <<= 1;
+            }
+
+            switch (c = bits) {
+                case 0:
+                    bits = 0;
+                    maxpower = Math.pow(2, 8);
+                    power = 1;
+                    while (power !== maxpower) {
+                        resb = data.val & data.position;
+                        data.position >>= 1;
+                        if (data.position === 0) {
+                            data.position = 32;
+                            data.val = getNextValue();
+                        }
+                        bits |= (resb > 0 ? 1 : 0) * power;
+                        power <<= 1;
+                    }
+
+                    dictionary[dictSize++] = f(bits);
+                    c = dictSize - 1;
+                    enlargeIn--;
+                    break;
+                case 1:
+                    bits = 0;
+                    maxpower = Math.pow(2, 16);
+                    power = 1;
+                    while (power !== maxpower) {
+                        resb = data.val & data.position;
+                        data.position >>= 1;
+                        if (data.position === 0) {
+                            data.position = 32;
+                            data.val = getNextValue();
+                        }
+                        bits |= (resb > 0 ? 1 : 0) * power;
+                        power <<= 1;
+                    }
+                    dictionary[dictSize++] = f(bits);
+                    c = dictSize - 1;
+                    enlargeIn--;
+                    break;
+                case 2:
+                    return result.join('');
+            }
+
+            if (enlargeIn === 0) {
+                enlargeIn = Math.pow(2, numBits);
+                numBits++;
+            }
+
+            if (dictionary[c]) {
+                entry = dictionary[c];
+            } else {
+                if (c === dictSize) {
+                    entry = w + w.charAt(0);
+                } else {
+                    return null;
+                }
+            }
+            result.push(entry);
+
+            dictionary[dictSize++] = w + entry.charAt(0);
+            enlargeIn--;
+
+            w = entry;
+
+            if (enlargeIn === 0) {
+                enlargeIn = Math.pow(2, numBits);
+                numBits++;
+            }
+        }
+    }
+
+    return {
+        compressToEncodedURIComponent: compressToBase62,
+        decompressFromEncodedURIComponent: decompressFromBase62
+    };
+})();
