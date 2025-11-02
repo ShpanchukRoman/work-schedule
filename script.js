@@ -15,6 +15,7 @@ let lastGeneratedShareUrl = '';
 let shareLinkExpanded = false;
 let lastShareEmployeeCount = 0;
 let lastShareQrDataUrl = '';
+let lastShareQrIsRemote = false;
 
 const DAY_NAMES = ['Понеділок', 'Вівторок', 'Середа', 'Четвер', "П'ятниця", 'Субота', 'Неділя'];
 const MONTH_NAMES = ['січня', 'лютого', 'березня', 'квітня', 'травня', 'червня', 'липня', 'серпня', 'вересня', 'жовтня', 'листопада', 'грудня'];
@@ -463,26 +464,38 @@ function getShortShareLink(url) {
 function updateShareQrPreview(wrapper) {
     if (!wrapper) return;
     const img = wrapper.querySelector('.share-result-qr-image');
-    if (!img || !lastGeneratedShareUrl || typeof QRious === 'undefined') {
+    if (!img || !lastGeneratedShareUrl) {
         lastShareQrDataUrl = '';
+        lastShareQrIsRemote = false;
         wrapper.classList.add('hidden');
         return;
     }
-    try {
-        const qr = new QRious({ value: lastGeneratedShareUrl, size: 220, level: 'H' });
-        lastShareQrDataUrl = qr.toDataURL('image/png');
-        img.src = lastShareQrDataUrl;
-        wrapper.classList.remove('hidden');
-    } catch (error) {
-        console.warn('QR generation failed', error);
-        lastShareQrDataUrl = '';
-        wrapper.classList.add('hidden');
+    if (typeof QRious !== 'undefined') {
+        try {
+            const qr = new QRious({ value: lastGeneratedShareUrl, size: 220, level: 'H' });
+            lastShareQrDataUrl = qr.toDataURL('image/png');
+            lastShareQrIsRemote = false;
+            img.src = lastShareQrDataUrl;
+            wrapper.classList.remove('hidden');
+            return;
+        } catch (error) {
+            console.warn('QRious generation failed, falling back to Google Charts', error);
+        }
     }
+    const remoteUrl = `https://chart.googleapis.com/chart?cht=qr&chs=220x220&chl=${encodeURIComponent(lastGeneratedShareUrl)}&chld=H|1`;
+    lastShareQrDataUrl = remoteUrl;
+    lastShareQrIsRemote = true;
+    img.src = remoteUrl;
+    wrapper.classList.remove('hidden');
 }
 
 function downloadShareQr() {
     if (!lastShareQrDataUrl) {
         showBannerMessage('QR-код недоступний. Згенеруйте посилання ще раз.');
+        return;
+    }
+    if (lastShareQrIsRemote) {
+        window.open(lastShareQrDataUrl, '_blank', 'noopener');
         return;
     }
     const link = document.createElement('a');
